@@ -5,9 +5,11 @@ import {mat4} from "gl-matrix";
 var gl = null;
 var shaderProgram = null;
 var aVertexPosition = null;
+var aVertexColor = null;
 var uPMatrix = null;
 var uMVMatrix = null;
-var bufSquareVertices = null;
+var bufSquarePosition = null;
+var bufSquareColor = null;
 
 window.addEventListener("load", start);
 
@@ -51,6 +53,8 @@ function initShaders() {
 
   aVertexPosition = gl.getAttribLocation(shaderProgram, "aVertexPosition");
   gl.enableVertexAttribArray(aVertexPosition);
+  aVertexColor = gl.getAttribLocation(shaderProgram, "aVertexColor");
+  gl.enableVertexAttribArray(aVertexColor);
   uPMatrix = gl.getUniformLocation(shaderProgram, "uPMatrix")
   uMVMatrix = gl.getUniformLocation(shaderProgram, "uMVMatrix")
 }
@@ -67,17 +71,25 @@ function getShader(source, type) {
 }
 
 function initBuffers() {
-  bufSquareVertices = gl.createBuffer();
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquareVertices);
-
-  var vertices = [
+  bufSquarePosition = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquarePosition);
+  const positions = [
     1.0, 1.0, 0.0,
     -1.0, 1.0, 0.0,
     1.0, -1.0, 0.0,
     -1.0, -1.0, 0.0
   ];
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
 
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+  bufSquareColor = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquareColor);
+  const colors = [
+    1.0, 1.0, 1.0, 1.0,
+    1.0, 0.0, 0.0, 1.0,
+    0.0, 1.0, 0.0, 1.0,
+    0.0, 0.0, 1.0, 1.0
+  ];
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 }
 
 function resize(gl) {
@@ -101,17 +113,18 @@ function drawScene(gl) {
   mat4.perspective(pMat, 45, aspect, 0.1, 100.0);
   gl.uniformMatrix4fv(uPMatrix, false, pMat);
 
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquarePosition);
+  gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquareColor);
+  gl.vertexAttribPointer(aVertexColor, 4, gl.FLOAT, false, 0, 0);
+
   const mvMat = mat4.create();
 
   mat4.translate(mvMat, mvMat, [2.0, 0.0, -6.0]);
   gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquareVertices);
-  gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   mat4.translate(mvMat, mvMat, [-4.0, 0.0, 0.0]);
   gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufSquareVertices);
-  gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
