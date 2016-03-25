@@ -27,7 +27,7 @@ function start() {
   initShaders();
   initBuffers();
 
-  setInterval(drawScene, 15, gl);
+  setInterval(drawScene, 15);
 }
 
 function initWebGL(canvas) {
@@ -92,10 +92,10 @@ function initBuffers() {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
 }
 
-function resize(gl) {
-  var realToCSSPixels = window.devicePixelRatio || 1;
-  var width = Math.floor(gl.canvas.clientWidth * realToCSSPixels);
-  var height = Math.floor(gl.canvas.clientHeight * realToCSSPixels);
+function resize() {
+  const realToCSSPixels = window.devicePixelRatio || 1;
+  const width = Math.floor(gl.canvas.clientWidth * realToCSSPixels);
+  const height = Math.floor(gl.canvas.clientHeight * realToCSSPixels);
   if (gl.canvas.width !== width || gl.canvas.height !== height) {
     gl.canvas.width = width;
     gl.canvas.height = height;
@@ -103,8 +103,28 @@ function resize(gl) {
   }
 }
 
-function drawScene(gl) {
-  resize(gl);
+function pp(f) {
+  pushMatrix();
+  f();
+  popMatrix();
+}
+
+var lastTime = null;
+var angle = 0.0;
+function animate() {
+  const currentTime = Date.now();
+  if (lastTime) {
+    const delta = currentTime - lastTime;
+    angle += Math.PI * delta / 1000;
+    if (angle > Math.PI * 2) {
+      angle -= Math.PI * 2;
+    }
+  }
+  lastTime = currentTime;
+}
+
+function drawScene() {
+  resize();
 
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
@@ -118,13 +138,34 @@ function drawScene(gl) {
   gl.bindBuffer(gl.ARRAY_BUFFER, bufSquareColor);
   gl.vertexAttribPointer(aVertexColor, 4, gl.FLOAT, false, 0, 0);
 
-  const mvMat = mat4.create();
+  pp(() => {
+    translate([0.0, 0.0, -6.0]);
+    for (var i = -2; i <= 2; i += 2) {
+      for (var j = -2; j <= 2; j += 2) {
+        pp(() => {
+          translate([i, j, 0.0]);
+          rotate(angle, [i, j, 0,0]);
+          gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
+          gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        });
+      }
+    }
+  });
 
-  mat4.translate(mvMat, mvMat, [2.0, 0.0, -6.0]);
-  gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  animate();
+}
 
-  mat4.translate(mvMat, mvMat, [-4.0, 0.0, 0.0]);
-  gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+var mvMat = mat4.create();
+const mvStack = [];
+function pushMatrix() {
+  mvStack.push(mat4.clone(mvMat));
+}
+function popMatrix() {
+  mvMat = mvStack.pop();
+}
+function translate(v) {
+  mat4.translate(mvMat, mvMat, v);
+}
+function rotate(rad, axis) {
+  mat4.rotate(mvMat, mvMat, rad, axis);
 }
