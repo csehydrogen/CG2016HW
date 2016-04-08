@@ -261,10 +261,10 @@ function showAll() {
   const p = vec3.create();
   vec3.transformMat4(p, p, m);
   const d = vec3.len(p);
+  const v4 = vec4.fromValues(0, 0, -1, 0);
+  vec4.transformMat4(v4, v4, m);
+  const v3 = vec3.fromValues(v4[0], v4[1], v4[2]);
   if (d < mind) {
-    const v4 = vec4.fromValues(0, 0, -1, 0);
-    vec4.transformMat4(v4, v4, m);
-    const v3 = vec3.fromValues(v4[0], v4[1], v4[2]);
     const a = vec3.sqrLen(v3);
     const b = 2 * vec3.dot(p, v3);
     const c = vec3.sqrLen(p) - mind * mind;
@@ -272,14 +272,14 @@ function showAll() {
     vec3.scaleAndAdd(p, p, v3, t);
   }
   pPos = vec3.len(p);
-  const z = vec3.fromValues(0, 0, 1);
+
+  vec3.scale(p, p, -1);
   const n = vec3.create();
-  vec3.cross(n, z, p);
-  var angle = Math.atan(vec3.len(n) / vec3.dot(z, p));
+  vec3.cross(n, v3, p);
+  var angle = Math.atan(vec3.len(n) / vec3.dot(v3, p));
   if (angle < 0) angle += Math.PI;
-  const r = mat4.create();
-  mat4.rotate(r, r, angle, n);
-  mat4.invert(pMatCur, r);
+  pMatCur[12] = pMatCur[13] = pMatCur[14] = 0;
+  mat4.rotate(pMatCur, pMatCur, -angle, n);
 }
 function animate() {
   const currentTime = Date.now();
