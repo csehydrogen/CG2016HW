@@ -193,7 +193,6 @@ function getCursorPosition(canvas, event) {
     var rect = canvas.getBoundingClientRect();
     var x = event.clientX - rect.left;
     var y = event.clientY - rect.top;
-    console.log("x: " + x + " y: " + y);
 }
 
 var isMouseDown = false;
@@ -232,20 +231,16 @@ function setpMatCur() {
   const r = mat4.create();
   mat4.rotate(r, r, angle, axis3);
   mat4.mul(pMatCur, r, pMatBase);
-  console.log(vec3.str(mouseStart) + " " + vec3.str(mouseCur));
-  console.log(vec3.str(axis3) + " " + angle);
 }
 
 const keystate = {};
 window.addEventListener('keydown', keydownListener);
 function keydownListener(e) {
   keystate[e.keyCode] = true;
-  console.log(e.keyCode);
 }
 window.addEventListener('keyup', keyupListener);
 function keyupListener(e) {
   keystate[e.keyCode] = false;
-  console.log(e.keyCode);
 }
 
 var lastTime = null;
@@ -256,6 +251,35 @@ function pTranslate(v) {
     const t = mat4.create();
     mat4.translate(t, t, v);
     mat4.mul(pMatCur, t, pMatCur);
+}
+function showAll() {
+  const mind = 4 / Math.tan(fovy / 2);
+  const m = mat4.create();
+  mat4.translate(m, m, [0, 0, -pPos]);
+  mat4.mul(m, m, pMatCur);
+  mat4.invert(m, m);
+  const p = vec3.create();
+  vec3.transformMat4(p, p, m);
+  const d = vec3.len(p);
+  if (d < mind) {
+    const v4 = vec4.fromValues(0, 0, -1, 0);
+    vec4.transformMat4(v4, v4, m);
+    const v3 = vec3.fromValues(v4[0], v4[1], v4[2]);
+    const a = vec3.sqrLen(v3);
+    const b = 2 * vec3.dot(p, v3);
+    const c = vec3.sqrLen(p) - mind * mind;
+    const t = (-b - Math.sqrt(Math.max(0, b * b - 4 * a * c))) / (2 * a);
+    vec3.scaleAndAdd(p, p, v3, t);
+  }
+  pPos = vec3.len(p);
+  const z = vec3.fromValues(0, 0, 1);
+  const n = vec3.create();
+  vec3.cross(n, z, p);
+  var angle = Math.atan(vec3.len(n) / vec3.dot(z, p));
+  if (angle < 0) angle += Math.PI;
+  const r = mat4.create();
+  mat4.rotate(r, r, angle, n);
+  mat4.invert(pMatCur, r);
 }
 function animate() {
   const currentTime = Date.now();
@@ -276,6 +300,7 @@ function animate() {
     if (keystate[90]/*z*/) auto = true;
     if (keystate[88]/*x*/) auto = false;
     if (keystate[67]/*c*/) wOfs += 0.5 * delta;
+    if (keystate[85]/*u*/) showAll();
     if (auto) {
       const amp = Math.PI / 18, w = Math.PI * 2;
       tAngle += amp * w * Math.cos(w * currentTime / 1000) * delta;
