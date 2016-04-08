@@ -249,7 +249,7 @@ function keyupListener(e) {
 }
 
 var lastTime = null;
-var pPos = 10, wOfs = 0;
+var pPos = 10, fovy = Math.PI / 4, wOfs = 0;
 var tAngle = 0, gAngle = 0, auto = false;
 const wRadius = 0.2;
 function pTranslate(v) {
@@ -267,6 +267,8 @@ function animate() {
     if (keystate[72]/*h*/) pTranslate([-2 * delta, 0, 0]);
     if (keystate[82]/*r*/) pPos -= 5 * delta;
     if (keystate[89]/*y*/) pPos += 5 * delta;
+    if (keystate[86]/*v*/) fovy -= Math.PI / 16 * delta;
+    if (keystate[78]/*n*/) fovy += Math.PI / 16 * delta;
     if (keystate[65]/*a*/) tAngle += Math.PI / 2 * delta;
     if (keystate[68]/*d*/) tAngle -= Math.PI / 2 * delta;
     if (keystate[83]/*s*/) gAngle += Math.PI / 9 * delta;
@@ -282,6 +284,7 @@ function animate() {
     }
     if (gAngle > Math.PI / 18) gAngle = Math.PI / 18;
     if (gAngle < -Math.PI / 9) gAngle = -Math.PI / 9;
+    if (pPos < 1) pPos = 1;
   }
   lastTime = currentTime;
 }
@@ -293,7 +296,7 @@ function drawScene() {
 
   const pMat = mat4.create();
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-  mat4.perspective(pMat, 45, aspect, 0.1, 100.0);
+  mat4.perspective(pMat, fovy, aspect, 0.1, 100.0);
   mat4.translate(pMat, pMat, [0, 0, -pPos]);
   mat4.mul(pMat, pMat, pMatCur);
   gl.uniformMatrix4fv(uPMatrix, false, pMat);
