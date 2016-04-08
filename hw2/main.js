@@ -1,6 +1,6 @@
 import fragementShaderSource from "./shader.frag";
 import vertexShaderSource from "./shader.vert";
-import {vec3, mat4} from "gl-matrix";
+import {vec3, vec4, mat4} from "gl-matrix";
 import * as modelData from "./modelData.js";
 
 var gl = null;
@@ -203,10 +203,10 @@ function mousedownListener(e) {
   isMouseDown = true;
   getMouseCoord(mouseStart);
   getMouseCoord(mouseCur);
+  mat4.copy(pMatBase, pMatCur);
 }
 function mouseupListener(e) {
   isMouseDown = false;
-  mat4.copy(pMatBase, pMatCur);
 }
 function mousemoveListener(e) {
   if (isMouseDown) {
@@ -225,16 +225,15 @@ function getMouseCoord(c) {
   vec3.set(c, x, y, z);
 }
 function setpMatCur() {
-  const axis = vec3.create();
-  vec3.cross(axis, mouseStart, mouseCur);
-  const pMatBaseInv = mat4.create();
-  mat4.invert(pMatBaseInv, pMatBase);
-  vec3.transformMat4(axis, axis, pMatBaseInv);
-  var angle = Math.atan(vec3.len(axis) / vec3.dot(mouseStart, mouseCur));
+  const axis3 = vec3.create();
+  vec3.cross(axis3, mouseStart, mouseCur);
+  var angle = Math.atan(vec3.len(axis3) / vec3.dot(mouseStart, mouseCur));
   if (angle < 0) angle += Math.PI;
-  mat4.rotate(pMatCur, pMatBase, angle, axis);
+  const r = mat4.create();
+  mat4.rotate(r, r, angle, axis3);
+  mat4.mul(pMatCur, r, pMatBase);
   console.log(vec3.str(mouseStart) + " " + vec3.str(mouseCur));
-  console.log(vec3.str(axis) + " " + angle);
+  console.log(vec3.str(axis3) + " " + angle);
 }
 
 const keystate = {};
@@ -250,17 +249,22 @@ function keyupListener(e) {
 }
 
 var lastTime = null;
-var pXangle = Math.PI / 8, pYangle = -Math.PI / 4, pPos = 10, wOfs = 0;
+var pPos = 10, wOfs = 0;
 var tAngle = 0, gAngle = 0, auto = false;
 const wRadius = 0.2;
+function pTranslate(v) {
+    const t = mat4.create();
+    mat4.translate(t, t, v);
+    mat4.mul(pMatCur, t, pMatCur);
+}
 function animate() {
   const currentTime = Date.now();
   if (lastTime) {
     const delta = (currentTime - lastTime) / 1000;
-    if (keystate[84]/*t*/) pXangle += Math.PI / 2 * delta;
-    if (keystate[71]/*g*/) pXangle -= Math.PI / 2 * delta;
-    if (keystate[70]/*f*/) pYangle += Math.PI / 2 * delta;
-    if (keystate[72]/*h*/) pYangle -= Math.PI / 2 * delta;
+    if (keystate[84]/*t*/) pTranslate([0, -2 * delta, 0]);
+    if (keystate[71]/*g*/) pTranslate([0, 2 * delta, 0]);
+    if (keystate[70]/*f*/) pTranslate([2 * delta, 0, 0]);
+    if (keystate[72]/*h*/) pTranslate([-2 * delta, 0, 0]);
     if (keystate[82]/*r*/) pPos -= 5 * delta;
     if (keystate[89]/*y*/) pPos += 5 * delta;
     if (keystate[65]/*a*/) tAngle += Math.PI / 2 * delta;
