@@ -1,14 +1,20 @@
 import fragementShaderSource from "./shader.frag";
 import vertexShaderSource from "./shader.vert";
-import {mat4} from "gl-matrix";
+import {vec3, mat4} from "gl-matrix";
 import * as modelData from "./modelData.js";
 
 var gl = null;
 var shaderProgram = null;
+var canvas = null;
 
 window.addEventListener("load", start);
 function start() {
-  initWebGL(document.getElementById("canvas-main"));
+  canvas = document.getElementById("canvas-main");
+  canvas.addEventListener('mousedown', mousedownListener);
+  canvas.addEventListener('mouseup', mouseupListener);
+  canvas.addEventListener('mousemove', mousemoveListener);
+
+  initWebGL();
   if (!gl) {
     return;
   }
@@ -24,7 +30,7 @@ function start() {
   setInterval(drawScene, 15);
 }
 
-function initWebGL(canvas) {
+function initWebGL() {
   try {
     gl = canvas.getContext("webgl") || canvas.getContext("experimental-webgl");
   } catch (e) {
@@ -183,6 +189,54 @@ function drawModel(model) {
   gl.drawArrays(gl.TRIANGLES, 0, model.n * 3);
 }
 
+function getCursorPosition(canvas, event) {
+    var rect = canvas.getBoundingClientRect();
+    var x = event.clientX - rect.left;
+    var y = event.clientY - rect.top;
+    console.log("x: " + x + " y: " + y);
+}
+
+var isMouseDown = false;
+const mouseStart = vec3.create(), mouseCur = vec3.create();
+const pMatBase = mat4.create(), pMatCur = mat4.create();
+function mousedownListener(e) {
+  isMouseDown = true;
+  getMouseCoord(mouseStart);
+  getMouseCoord(mouseCur);
+}
+function mouseupListener(e) {
+  isMouseDown = false;
+  mat4.copy(pMatBase, pMatCur);
+}
+function mousemoveListener(e) {
+  if (isMouseDown) {
+    getMouseCoord(mouseCur);
+    setpMatCur();
+  }
+}
+function getMouseCoord(c) {
+  const rect = canvas.getBoundingClientRect();
+  const a = canvas.clientHeight / 2;
+  var x = (event.clientX - rect.left - canvas.clientWidth / 2) / a;
+  var y = -(event.clientY - rect.top - canvas.clientHeight / 2) / a;
+  const r = Math.max(1, Math.sqrt(x * x + y * y));
+  x /= r; y /= r;
+  const z = Math.sqrt(1 - Math.min(1, x * x + y * y));
+  vec3.set(c, x, y, z);
+}
+function setpMatCur() {
+  const axis = vec3.create();
+  vec3.cross(axis, mouseStart, mouseCur);
+  const pMatBaseInv = mat4.create();
+  mat4.invert(pMatBaseInv, pMatBase);
+  vec3.transformMat4(axis, axis, pMatBaseInv);
+  var angle = Math.atan(vec3.len(axis) / vec3.dot(mouseStart, mouseCur));
+  if (angle < 0) angle += Math.PI;
+  mat4.rotate(pMatCur, pMatBase, angle, axis);
+  console.log(vec3.str(mouseStart) + " " + vec3.str(mouseCur));
+  console.log(vec3.str(axis) + " " + angle);
+}
+
 const keystate = {};
 window.addEventListener('keydown', keydownListener);
 function keydownListener(e) {
@@ -237,8 +291,7 @@ function drawScene() {
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
   mat4.perspective(pMat, 45, aspect, 0.1, 100.0);
   mat4.translate(pMat, pMat, [0, 0, -pPos]);
-  mat4.rotate(pMat, pMat, pXangle, [1, 0, 0]);
-  mat4.rotate(pMat, pMat, pYangle, [0, 1, 0]);
+  mat4.mul(pMat, pMat, pMatCur);
   gl.uniformMatrix4fv(uPMatrix, false, pMat);
 
   function drawTank() {
