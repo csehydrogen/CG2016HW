@@ -34,8 +34,11 @@ function init() {
 }
 
 var aVertexPosition = null;
+var aVertexColor = null;
+var aVertexNormal = null;
 var uPMatrix = null;
 var uMVMatrix = null;
+var uNMatrix = null;
 function initShaders() {
   const shaderProgram = gl.createProgram();
   gl.attachShader(shaderProgram, getShader(fragementShaderSource, gl.FRAGMENT_SHADER));
@@ -49,8 +52,13 @@ function initShaders() {
 
   aVertexPosition = gl.getAttribLocation(shaderProgram, "aVertexPosition");
   gl.enableVertexAttribArray(aVertexPosition);
+  aVertexColor = gl.getAttribLocation(shaderProgram, "aVertexColor");
+  gl.enableVertexAttribArray(aVertexColor);
+  aVertexNormal = gl.getAttribLocation(shaderProgram, "aVertexNormal");
+  gl.enableVertexAttribArray(aVertexNormal);
   uPMatrix = gl.getUniformLocation(shaderProgram, "uPMatrix")
   uMVMatrix = gl.getUniformLocation(shaderProgram, "uMVMatrix")
+  uNMatrix = gl.getUniformLocation(shaderProgram, "uNMatrix")
 }
 
 function getShader(source, type) {
@@ -66,10 +74,16 @@ function getShader(source, type) {
 
 const model = {
   n: 0, m: 0,
-  bufVertexPosition: null
+  bufVertexPosition: null,
+  bufVertexColor: null,
+  bufVertexNormal: null,
+  bufIndex: null
 };
 function initBuffers() {
   model.bufVertexPosition = gl.createBuffer();
+  model.bufVertexColor = gl.createBuffer();
+  model.bufVertexNormal = gl.createBuffer();
+  model.bufIndex = gl.createBuffer();
 }
 
 function parseModel() {
@@ -194,19 +208,69 @@ function parseModel() {
     return ret;
   }
 
+  const density = parseInt(document.getElementById("density").value);
+  const ci = (n - 3) * density, cj = m * density;
+
+  const vertices = [];
+  var radius = 10;
+  for (var i = 0; i < ci; ++i) {
+    var t = [];
+    for (var j = 0; j < cj; ++j) {
+      const v = getPointOnSurface(i / ci, j / cj);
+      radius = Math.max(radius, vec3.len(v));
+      t.push(v);
+    }
+    vertices.push(t);
+  }
+
   var arrVertexPosition = [];
-  var ci = (n - 3) * 20, cj = m * 20;
-  for (i = 0; i < ci; ++i) {
-    for (j = 0; j < cj; ++j) {
-      t = getPointOnSurface(i / ci, j / cj);
-      arrVertexPosition.push(t[0]);
-      arrVertexPosition.push(t[1]);
-      arrVertexPosition.push(t[2]);
+  var arrVertexColor = [];
+  var arrVertexNormal = [];
+  var arrIndex = [];
+  function pushVec3(arr, v) {
+    for (var k = 0; k < 3; ++k) {
+      arr.push(v[k]);
+    }
+  }
+  const t0 = vec3.create(), t1 = vec3.create();
+  var idx = 0;
+  for (var i = 1; i < ci; ++i) {
+    for (var j = 0; j < cj; ++j) {
+      const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
+      pushVec3(arrVertexPosition, vertices[x0][y0]);
+      pushVec3(arrVertexPosition, vertices[x0][y1]);
+      pushVec3(arrVertexPosition, vertices[x1][y0]);
+      pushVec3(arrVertexPosition, vertices[x1][y1]);
+      for (var k = 0; k < 4; ++k) {
+        pushVec3(arrVertexColor, vec3.fromValues(i / ci, j / cj, 0.5));
+      }
+      vec3.sub(t0, vertices[x0][y1], vertices[x0][y0]);
+      vec3.sub(t1, vertices[x1][y0], vertices[x0][y0]);
+      vec3.cross(t0, t0, t1);
+      vec3.normalize(t0, t0);
+      for (var k = 0; k < 4; ++k) {
+        pushVec3(arrVertexNormal, t0);
+      }
+      arrIndex.push(idx + 0);
+      arrIndex.push(idx + 1);
+      arrIndex.push(idx + 2);
+      arrIndex.push(idx + 1);
+      arrIndex.push(idx + 2);
+      arrIndex.push(idx + 3);
+      idx += 4;
     }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexPosition);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexPosition), gl.STATIC_DRAW);
-  model.n = ci; model.m = cj;
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexColor);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexColor), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexNormal);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexNormal), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.bufIndex);
+  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(arrIndex), gl.STATIC_DRAW);
+  model.n = ci - 1; model.m = cj;
+  model.radius = radius;
+  pRadius = radius * 2;
 }
 
 var isMouseDown = false;
@@ -269,17 +333,17 @@ function resize() {
 }
 
 var lastTime = null;
-var pRadius = 50, fovy = Math.PI / 4;
+var pRadius = 10, fovy = Math.PI / 4;
 function animate() {
   const currentTime = Date.now();
   if (lastTime) {
     const delta = (currentTime - lastTime) / 1000;
-    if (keystate[87]/*w*/) pTranslate([0, -10 * delta, 0]);
-    if (keystate[83]/*s*/) pTranslate([0, 10 * delta, 0]);
-    if (keystate[65]/*a*/) pTranslate([10 * delta, 0, 0]);
-    if (keystate[68]/*d*/) pTranslate([-10 * delta, 0, 0]);
-    if (keystate[82]/*r*/) pRadius -= 10 * delta;
-    if (keystate[84]/*t*/) pRadius += 10 * delta;
+    if (keystate[87]/*w*/) pTranslate([0, -model.radius / 1 * delta, 0]);
+    if (keystate[83]/*s*/) pTranslate([0, model.radius / 1 * delta, 0]);
+    if (keystate[65]/*a*/) pTranslate([model.radius / 1 * delta, 0, 0]);
+    if (keystate[68]/*d*/) pTranslate([-model.radius / 1 * delta, 0, 0]);
+    if (keystate[82]/*r*/) pRadius -= model.radius / 1 * delta;
+    if (keystate[84]/*t*/) pRadius += model.radius / 1 * delta;
     if (keystate[70]/*f*/) fovy -= Math.PI / 8 * delta;
     if (keystate[71]/*g*/) fovy += Math.PI / 8 * delta;
   }
@@ -291,6 +355,14 @@ function pTranslate(v) {
   mat4.mul(pMatCur, t, pMatCur);
 }
 
+function setUniforms() {
+  gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
+  const nMat = mat4.create();
+  mat4.invert(nMat, mvMat);
+  mat4.transpose(nMat, nMat);
+  gl.uniformMatrix4fv(uNMatrix, false, nMat);
+}
+
 function drawScene() {
   resize();
 
@@ -298,16 +370,22 @@ function drawScene() {
 
   const pMat = mat4.create();
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-  mat4.perspective(pMat, fovy, aspect, 0.1, 200.0);
+  mat4.perspective(pMat, fovy, aspect, 0.1, 1000.0);
   mat4.translate(pMat, pMat, [0, 0, -pRadius]);
   mat4.mul(pMat, pMat, pMatCur);
   gl.uniformMatrix4fv(uPMatrix, false, pMat);
 
-  gl.uniformMatrix4fv(uMVMatrix, false, mvMat);
   gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexPosition);
   gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
-  for (var i = 0; i < model.n; ++i) {
-    gl.drawArrays(gl.LINE_LOOP, i * model.m, model.m);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexColor);
+  gl.vertexAttribPointer(aVertexColor, 3, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexNormal);
+  gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+  const n = model.n * model.m * 6;
+  if (n > 0) {
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.bufIndex);
+    setUniforms();
+    gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_SHORT, 0);
   }
 
   animate();
