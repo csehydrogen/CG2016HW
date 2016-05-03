@@ -1,5 +1,7 @@
 import fragementShaderSource from "./shader.frag";
 import vertexShaderSource from "./shader.vert";
+import modelTrombone from "./trombone.txt";
+import modelCokeBottle from "./coke_bottle.txt";
 import {vec3, mat4, quat} from "gl-matrix";
 
 var gl = null;
@@ -21,6 +23,12 @@ function init() {
   window.addEventListener("keyup", keyupListener);
 
   document.getElementById("apply").addEventListener("click", parseModel);
+  document.getElementById("trombone").addEventListener("click", function(){
+    document.getElementById("model").value = modelTrombone;
+  });
+  document.getElementById("coke_bottle").addEventListener("click", function(){
+    document.getElementById("model").value = modelCokeBottle;
+  });
 
   gl.clearColor(0.5, 0.5, 0.5, 1.0);
   gl.enable(gl.DEPTH_TEST);
@@ -77,13 +85,12 @@ const model = {
   bufVertexPosition: null,
   bufVertexColor: null,
   bufVertexNormal: null,
-  bufIndex: null
+  radius: 0
 };
 function initBuffers() {
   model.bufVertexPosition = gl.createBuffer();
   model.bufVertexColor = gl.createBuffer();
   model.bufVertexNormal = gl.createBuffer();
-  model.bufIndex = gl.createBuffer();
 }
 
 function parseModel() {
@@ -233,31 +240,27 @@ function parseModel() {
     }
   }
   const t0 = vec3.create(), t1 = vec3.create();
-  var idx = 0;
   for (var i = 1; i < ci; ++i) {
     for (var j = 0; j < cj; ++j) {
       const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
       pushVec3(arrVertexPosition, vertices[x0][y0]);
       pushVec3(arrVertexPosition, vertices[x0][y1]);
       pushVec3(arrVertexPosition, vertices[x1][y0]);
+      pushVec3(arrVertexPosition, vertices[x0][y1]);
+      pushVec3(arrVertexPosition, vertices[x1][y0]);
       pushVec3(arrVertexPosition, vertices[x1][y1]);
-      for (var k = 0; k < 4; ++k) {
-        pushVec3(arrVertexColor, vec3.fromValues(i / ci, j / cj, 0.5));
+      const cx = Math.sin(i / ci * Math.PI * 2) / 2 + 0.5;
+      const cy = Math.sin(j / cj * Math.PI * 2) / 2 + 0.5;
+      for (var k = 0; k < 6; ++k) {
+        pushVec3(arrVertexColor, vec3.fromValues(cx, cy, 0.5));
       }
       vec3.sub(t0, vertices[x0][y1], vertices[x0][y0]);
       vec3.sub(t1, vertices[x1][y0], vertices[x0][y0]);
       vec3.cross(t0, t0, t1);
       vec3.normalize(t0, t0);
-      for (var k = 0; k < 4; ++k) {
+      for (var k = 0; k < 6; ++k) {
         pushVec3(arrVertexNormal, t0);
       }
-      arrIndex.push(idx + 0);
-      arrIndex.push(idx + 1);
-      arrIndex.push(idx + 2);
-      arrIndex.push(idx + 1);
-      arrIndex.push(idx + 2);
-      arrIndex.push(idx + 3);
-      idx += 4;
     }
   }
   gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexPosition);
@@ -266,11 +269,11 @@ function parseModel() {
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexColor), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexNormal);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexNormal), gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.bufIndex);
-  gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(arrIndex), gl.STATIC_DRAW);
   model.n = ci - 1; model.m = cj;
   model.radius = radius;
+
   pRadius = radius * 2;
+  mat4.identity(pMatCur);
 }
 
 var isMouseDown = false;
@@ -383,9 +386,8 @@ function drawScene() {
   gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
   const n = model.n * model.m * 6;
   if (n > 0) {
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, model.bufIndex);
     setUniforms();
-    gl.drawElements(gl.TRIANGLES, n, gl.UNSIGNED_SHORT, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, n);
   }
 
   animate();

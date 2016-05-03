@@ -7,7 +7,7 @@ module.exports = {
   module: {
     loaders: [
       { test: /\.css$/, loader: "style!css" },
-      { test: /\.(frag|vert)$/, loader: "raw" },
+      { test: /\.(frag|vert|txt)$/, loader: "raw" },
       {
         test: /\.js$/,
         exclude: /node_modules/,
