@@ -2,6 +2,7 @@ import fragementShaderSource from "./shader.frag";
 import vertexShaderSource from "./shader.vert";
 import modelTrombone from "./trombone.txt";
 import modelCokeBottle from "./coke_bottle.txt";
+import modelKleinBottle from "./klein_bottle.txt";
 import {vec3, mat4, quat} from "gl-matrix";
 
 var gl = null;
@@ -28,6 +29,21 @@ function init() {
   });
   document.getElementById("coke_bottle").addEventListener("click", function(){
     document.getElementById("model").value = modelCokeBottle;
+  });
+  document.getElementById("klein_bottle").addEventListener("click", function(){
+    document.getElementById("model").value = modelKleinBottle;
+  });
+
+  document.getElementById("wire").addEventListener("change", function(e){
+    model.wire = e.target.checked;
+  });
+  document.getElementById("mesh").addEventListener("change", function(e){
+    model.mesh = e.target.checked;
+  });
+
+  document.getElementById("adjust_view").addEventListener("click", function(){
+    pRadius = model.radius * 2;
+    mat4.identity(pMatCur);
   });
 
   gl.clearColor(0.5, 0.5, 0.5, 1.0);
@@ -82,15 +98,22 @@ function getShader(source, type) {
 
 const model = {
   n: 0, m: 0,
-  bufVertexPosition: null,
-  bufVertexColor: null,
-  bufVertexNormal: null,
+  bufMeshVertexPosition: null,
+  bufMeshVertexColor: null,
+  bufMeshVertexNormal: null,
+  bufWireVertexPosition: null,
+  bufWireVertexColor: null,
+  bufWireVertexNormal: null,
+  wire: true, mesh: true,
   radius: 0
 };
 function initBuffers() {
-  model.bufVertexPosition = gl.createBuffer();
-  model.bufVertexColor = gl.createBuffer();
-  model.bufVertexNormal = gl.createBuffer();
+  model.bufMeshVertexPosition = gl.createBuffer();
+  model.bufMeshVertexColor = gl.createBuffer();
+  model.bufMeshVertexNormal = gl.createBuffer();
+  model.bufWireVertexPosition = gl.createBuffer();
+  model.bufWireVertexColor = gl.createBuffer();
+  model.bufWireVertexNormal = gl.createBuffer();
 }
 
 function parseModel() {
@@ -230,10 +253,12 @@ function parseModel() {
     vertices.push(t);
   }
 
-  var arrVertexPosition = [];
-  var arrVertexColor = [];
-  var arrVertexNormal = [];
-  var arrIndex = [];
+  var arrMeshVertexPosition = [];
+  var arrMeshVertexColor = [];
+  var arrMeshVertexNormal = [];
+  var arrWireVertexPosition = [];
+  var arrWireVertexColor = [];
+  var arrWireVertexNormal = [];
   function pushVec3(arr, v) {
     for (var k = 0; k < 3; ++k) {
       arr.push(v[k]);
@@ -243,37 +268,59 @@ function parseModel() {
   for (var i = 1; i < ci; ++i) {
     for (var j = 0; j < cj; ++j) {
       const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
-      pushVec3(arrVertexPosition, vertices[x0][y0]);
-      pushVec3(arrVertexPosition, vertices[x0][y1]);
-      pushVec3(arrVertexPosition, vertices[x1][y0]);
-      pushVec3(arrVertexPosition, vertices[x0][y1]);
-      pushVec3(arrVertexPosition, vertices[x1][y0]);
-      pushVec3(arrVertexPosition, vertices[x1][y1]);
+      pushVec3(arrMeshVertexPosition, vertices[x0][y0]);
+      pushVec3(arrMeshVertexPosition, vertices[x0][y1]);
+      pushVec3(arrMeshVertexPosition, vertices[x1][y0]);
+      pushVec3(arrMeshVertexPosition, vertices[x0][y1]);
+      pushVec3(arrMeshVertexPosition, vertices[x1][y0]);
+      pushVec3(arrMeshVertexPosition, vertices[x1][y1]);
+
+      pushVec3(arrWireVertexPosition, vertices[x0][y0]);
+      pushVec3(arrWireVertexPosition, vertices[x0][y1]);
+      pushVec3(arrWireVertexPosition, vertices[x0][y1]);
+      pushVec3(arrWireVertexPosition, vertices[x1][y1]);
+      pushVec3(arrWireVertexPosition, vertices[x1][y1]);
+      pushVec3(arrWireVertexPosition, vertices[x1][y0]);
+      pushVec3(arrWireVertexPosition, vertices[x1][y0]);
+      pushVec3(arrWireVertexPosition, vertices[x0][y0]);
+      pushVec3(arrWireVertexPosition, vertices[x0][y1]);
+      pushVec3(arrWireVertexPosition, vertices[x1][y0]);
+
       const cx = Math.sin(i / ci * Math.PI * 2) / 2 + 0.5;
       const cy = Math.sin(j / cj * Math.PI * 2) / 2 + 0.5;
       for (var k = 0; k < 6; ++k) {
-        pushVec3(arrVertexColor, vec3.fromValues(cx, cy, 0.5));
+        pushVec3(arrMeshVertexColor, vec3.fromValues(cx, cy, 0.5));
       }
+      for (var k = 0; k < 10; ++k) {
+        pushVec3(arrWireVertexColor, vec3.fromValues(0, 0, 0));
+      }
+
       vec3.sub(t0, vertices[x0][y1], vertices[x0][y0]);
       vec3.sub(t1, vertices[x1][y0], vertices[x0][y0]);
       vec3.cross(t0, t0, t1);
       vec3.normalize(t0, t0);
       for (var k = 0; k < 6; ++k) {
-        pushVec3(arrVertexNormal, t0);
+        pushVec3(arrMeshVertexNormal, t0);
+      }
+      for (var k = 0; k < 10; ++k) {
+        pushVec3(arrWireVertexNormal, t0);
       }
     }
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexPosition);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexPosition), gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexColor);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexColor), gl.STATIC_DRAW);
-  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexNormal);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexNormal), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexPosition);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrMeshVertexPosition), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexColor);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrMeshVertexColor), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexNormal);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrMeshVertexNormal), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufWireVertexPosition);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexPosition), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufWireVertexColor);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexColor), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufWireVertexNormal);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexNormal), gl.STATIC_DRAW);
   model.n = ci - 1; model.m = cj;
   model.radius = radius;
-
-  pRadius = radius * 2;
-  mat4.identity(pMatCur);
 }
 
 var isMouseDown = false;
@@ -336,7 +383,7 @@ function resize() {
 }
 
 var lastTime = null;
-var pRadius = 10, fovy = Math.PI / 4;
+var pRadius = 50, fovy = Math.PI / 4;
 function animate() {
   const currentTime = Date.now();
   if (lastTime) {
@@ -378,16 +425,30 @@ function drawScene() {
   mat4.mul(pMat, pMat, pMatCur);
   gl.uniformMatrix4fv(uPMatrix, false, pMat);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexPosition);
-  gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexColor);
-  gl.vertexAttribPointer(aVertexColor, 3, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, model.bufVertexNormal);
-  gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
-  const n = model.n * model.m * 6;
-  if (n > 0) {
-    setUniforms();
-    gl.drawArrays(gl.TRIANGLES, 0, n);
+  setUniforms();
+
+  const cnt = model.n * model.m;
+
+  if (cnt > 0) {
+    if (model.mesh) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexPosition);
+      gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexColor);
+      gl.vertexAttribPointer(aVertexColor, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexNormal);
+      gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, cnt * 6);
+    }
+
+    if (model.wire) {
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.bufWireVertexPosition);
+      gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.bufWireVertexColor);
+      gl.vertexAttribPointer(aVertexColor, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, model.bufWireVertexNormal);
+      gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.LINES, 0, cnt * 10);
+    }
   }
 
   animate();
