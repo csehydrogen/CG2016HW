@@ -1,0 +1,55 @@
+\documentclass[11pt]{article}
+
+\usepackage{kotex}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\begin{document}
+
+\title{Programming Assignment \#3}
+\author{김희훈}
+\maketitle
+
+\section{요약}
+
+본 과제에서는 Swept Surface에 대한 정보를 입력받고 파싱하여 그려주는 프로그램을 작성하였습니다.
+과제에서 요구하는 사항은 모두 구현되었고, 추가로 렌더링에 쓰이는 mesh 갯수를 조절하는 기능, edge와 surface 렌더링을 on/off 할 수 있는 기능을 구현하였습니다.
+
+\section{컴파일 및 실행}
+
+WebGL을 지원하는 최신 브라우저와 npm이 시스템에 설치되어 있어야 합니다.
+쉘에서 다음 명령어들을 수행하여 컴파일합니다.
+
+\begin{enumerate}
+  \item cd /path/to/src
+  \item npm install
+  \item webpack
+\end{enumerate}
+
+index.html을 브라우저에서 실행하면 됩니다.
+또는 \url{http://csehydrogen.github.io/CG2016HW/hw3/}에서 실행해 볼 수 있습니다.
+최신 Chrome에서 실행을 확인하였습니다.
+
+\section{조작법}
+
+뷰를 마우스 드래그로 회전, wasd로 translate, rt로 dolly in/out, fg로 zoom in/out 할 수 있습니다.
+렌더링을 위해서는 먼저 model칸에 데이터를 입력하거나 밑의 버튼을 눌러 사전에 정의된 모델을 자동 입력해야합니다.
+그리고 density(자연수)를 지정한 후 apply를 누르면 렌더링 됩니다.
+wire, mesh 체크박스를 통해 렌더링 여부를 조절할 수 있습니다.
+adjust view 버튼은 모델이 중앙에 오도록 view를 초기 위치로 조절해 줍니다.
+
+\section{구현}
+
+$[0,1)$ 범위의 $u$, $v$를 받아서 swept surface위의 점을 반환하는 함수 $f(u, v)$를 만들기로 결정했습니다.
+먼저 control point만을 가지고 x-z plane 위의 내삽점 $p$을 구합니다.
+$u$번째 단면의 B-spline 또는 Catmull-Rom spline 함수 $f_u(v)$를 미리 구해둔 뒤에 $f_{\lfloor u\rfloor -1}(v)$, $f_{\lfloor u\rfloor}(v)$, $f_{\lfloor u\rfloor +1}(v)$, $f_{\lfloor u\rfloor +2}(v)$ 네 점으로 Catmull-Rom spline을 만들면 됩니다.
+마찬가지로 scale, rotation, translation에 대해서도 Catmull-Rom spline을 구하여 $p$에 적용하면 $f(u,v)$가 구해집니다.
+
+이제 $f$를 등간격으로 여러번 호출하여 점들을 구할 수 있습니다.
+단면 갯수를 $n$, 단면 당 조절점 갯수를 $m$이라고 하면, $u$는 $\frac{1}{(n-3) \times density}$, $v$는 $\frac{1}{m \times density}$ 간격으로 증가시키면서 호출하여 그리드를 만듭니다.
+단면 간의 spline은 closed가 아니고 양 끝의 표면을 버리기 때문에 $n-3$을 사용하며, 단면 내에서는 closed이기 때문에 $m$을 사용합니다.
+구해진 $(n-3) \times m \times (density)^2$개의 사각형을 삼각형 두개로 나누어 렌더링하였습니다.
+Mesh가 더 잘 드러나도록 색상 중 r 성분은 $u$의 $\sin$ 함수로, g 성분은 $v$의 $\sin$ 함수로 구했습니다.
+과제에서 요구한 모델로는 클라인 병을 만들었습니다.
+
+\end{document}
