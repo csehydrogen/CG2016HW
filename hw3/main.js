@@ -3,7 +3,9 @@ import vertexShaderSource from "./shader.vert";
 import modelTrombone from "./trombone.txt";
 import modelCokeBottle from "./coke_bottle.txt";
 import modelKleinBottle from "./klein_bottle.txt";
+import modelCube from "./cube.txt";
 import {vec3, mat4, quat} from "gl-matrix";
+import StringBuilder from "stringbuilder";
 
 var gl = null;
 
@@ -32,6 +34,9 @@ function init() {
   });
   document.getElementById("klein_bottle").addEventListener("click", function(){
     document.getElementById("model").value = modelKleinBottle;
+  });
+  document.getElementById("cube").addEventListener("click", function(){
+    document.getElementById("model").value = modelCube;
   });
 
   document.getElementById("wire").addEventListener("change", function(e){
@@ -253,6 +258,7 @@ function parseModel() {
     vertices.push(t);
   }
 
+  const sb = new StringBuilder();
   var arrMeshVertexPosition = [];
   var arrMeshVertexColor = [];
   var arrMeshVertexNormal = [];
@@ -264,15 +270,25 @@ function parseModel() {
       arr.push(v[k]);
     }
   }
+  function appendFacet(sb, n, v0, v1, v2) {
+    sb.appendLine("facet normal {0:0.00000} {1:0.00000} {2:0.00000}", n[0], n[1], n[2]);
+    sb.appendLine("outer loop");
+    sb.appendLine("vertex {0:0.00000} {1:0.00000} {2:0.00000}", v0[0], v0[1], v0[2]);
+    sb.appendLine("vertex {0:0.00000} {1:0.00000} {2:0.00000}", v1[0], v1[1], v1[2]);
+    sb.appendLine("vertex {0:0.00000} {1:0.00000} {2:0.00000}", v2[0], v2[1], v2[2]);
+    sb.appendLine("endloop");
+    sb.appendLine("endfacet");
+  }
   const t0 = vec3.create(), t1 = vec3.create();
+  sb.appendLine("solid name");
   for (var i = 1; i < ci; ++i) {
     for (var j = 0; j < cj; ++j) {
       const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
       pushVec3(arrMeshVertexPosition, vertices[x0][y0]);
       pushVec3(arrMeshVertexPosition, vertices[x0][y1]);
       pushVec3(arrMeshVertexPosition, vertices[x1][y0]);
-      pushVec3(arrMeshVertexPosition, vertices[x0][y1]);
       pushVec3(arrMeshVertexPosition, vertices[x1][y0]);
+      pushVec3(arrMeshVertexPosition, vertices[x0][y1]);
       pushVec3(arrMeshVertexPosition, vertices[x1][y1]);
 
       pushVec3(arrWireVertexPosition, vertices[x0][y0]);
@@ -305,8 +321,18 @@ function parseModel() {
       for (var k = 0; k < 10; ++k) {
         pushVec3(arrWireVertexNormal, t0);
       }
+
+      appendFacet(sb, t0, vertices[x0][y0], vertices[x0][y1], vertices[x1][y0]);
+      appendFacet(sb, t0, vertices[x1][y0], vertices[x0][y1], vertices[x1][y1]);
     }
   }
+  sb.appendLine("endsolid name");
+  document.getElementById("export").addEventListener("click", function(){
+    sb.build(function(err, result) {
+      document.getElementById("stl").value = result;
+    })
+  });
+
   gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexPosition);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrMeshVertexPosition), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, model.bufMeshVertexColor);
