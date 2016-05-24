@@ -1,5 +1,7 @@
 import {vec3} from "gl-matrix";
 
+var eps = 1e-2;
+
 // p: vec3 array of len 3, points
 // n: vec3 array of len 3, normals
 // c: vec3, color
@@ -40,10 +42,10 @@ Triangle.prototype.divide = function (that, l, m, r) {
   cNeg = cZero = cPos = 0;
   for (i = 0; i < 3; ++i) {
     t = that.plane(this.p[i]);
-    if (t < -0.1) {
+    if (t < -eps) {
       s.push(-1);
       ++cNeg;
-    } else if (t > 0.1) {
+    } else if (t > eps) {
       s.push(1);
       ++cPos;
     } else {
@@ -128,13 +130,14 @@ Triangle.prototype.divide = function (that, l, m, r) {
 
 var BSPTree = function (ts) {
   var i, j, l, m, r, n;
-  i = Math.floor(0.5 * ts.length);
+  i = Math.floor(Math.random() * ts.length);
   l = []; m = []; r = [];
-  if (ts.length == 33) {
-    l = l;
-  }
   for (j = 0; j < ts.length; ++j) {
-    ts[j].divide(ts[i], l, m, r);
+    if (i == j) {
+      m.push(ts[j]);
+    } else {
+      ts[j].divide(ts[i], l, m, r);
+    }
   }
   this.m = m;
   this.l = this.r = null;
@@ -144,11 +147,7 @@ var BSPTree = function (ts) {
   if (r.length > 0) {
     this.r = new BSPTree(r);
   }
-  this.a = vec3.create();
-  for (i = 0; i < m.length; ++i) {
-    vec3.add(this.a, this.a, m[i].a);
-  }
-  vec3.normalize(this.a, this.a);
+  this.a = m[0].a;
 };
 
 BSPTree.prototype.depthOrder = function (v) {

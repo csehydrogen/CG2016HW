@@ -105,6 +105,7 @@ function initBuffers() {
   bufVertexNormal = gl.createBuffer();
 }
 
+var bspTree = null;
 function parseModel() {
   var raw = document.getElementById("model").value, i, j, k, t;
   var type, n, m, c, s, r, p
@@ -279,7 +280,6 @@ function parseModel() {
   bspTree = new BSPTree(ts);
   mRadius = radius;
 }
-var bspTree = new BSPTree([]);
 
 var isMouseDown = false;
 const mouseStart = vec3.create(), mouseCur = vec3.create();
@@ -373,6 +373,8 @@ function drawScene() {
   resize();
 
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  if (bspTree == null) return;
 
   const pMat = mat4.create();
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
