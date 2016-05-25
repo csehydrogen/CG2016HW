@@ -1,11 +1,11 @@
-import {vec3} from "gl-matrix";
+import {vec3, vec4} from "gl-matrix";
 
 var eps = 1e-2;
 
 // p: vec3 array of len 3, points
 // n: vec3 array of len 3, normals
-// c: vec3, color
-// k: vec3, shading parameters
+// c: vec4 array of len 3, color
+// k: vec3 array of len 3, shading parameters
 // ax+b represent plane including triangle
 var Triangle = function (p, n, c, k) {
   var i, t;
@@ -22,6 +22,14 @@ var Triangle = function (p, n, c, k) {
   this.b = -vec3.dot(this.a, this.p[0]);
 };
 
+Triangle.prototype.area = function () {
+  var a = vec3.create(), b = vec3.create();
+  vec3.sub(a, this.p[1], this.p[0]);
+  vec3.sub(b, this.p[2], this.p[0]);
+  vec3.cross(a, a, b);
+  return vec3.len(a) / 2;
+};
+
 // return ax+b for given vec3 x
 Triangle.prototype.plane = function (x) {
   return vec3.dot(this.a, x) + this.b;
@@ -36,7 +44,7 @@ Triangle.prototype.intersect = function (p0, p1) {
 // given triangle that as plane, divide this into triangles, and push to l, m, and r
 Triangle.prototype.divide = function (that, l, m, r) {
   var s, cNeg, cZero, cPos, i, t;
-  var p, n, ofs, ts;
+  var p, n, c, k, ofs, ts;
 
   s = [];
   cNeg = cZero = cPos = 0;
@@ -67,10 +75,12 @@ Triangle.prototype.divide = function (that, l, m, r) {
         break;
       }
     }
-    p = []; n = [];
+    p = []; n = []; c = []; k = [];
     for (i = 0; i < 3; ++i) {
       p.push(this.p[(ofs + i) % 3]);
       n.push(this.n[(ofs + i) % 3]);
+      c.push(this.c[(ofs + i) % 3]);
+      k.push(this.k[(ofs + i) % 3]);
     }
     t = that.intersect(p[1], p[2]);
     p.push(vec3.create());
@@ -78,9 +88,13 @@ Triangle.prototype.divide = function (that, l, m, r) {
     n.push(vec3.create());
     vec3.lerp(n[3], n[1], n[2], t);
     vec3.normalize(n[3], n[3]);
+    c.push(vec4.create());
+    vec4.lerp(c[3], c[1], c[2], t);
+    k.push(vec3.create());
+    vec3.lerp(k[3], k[1], k[2], t);
     ts = [];
-    ts.push(new Triangle([p[0], p[1], p[3]], [n[0], n[1], n[3]], this.c, this.k));
-    ts.push(new Triangle([p[0], p[3], p[2]], [n[0], n[3], n[2]], this.c, this.k));
+    ts.push(new Triangle([p[0], p[1], p[3]], [n[0], n[1], n[3]], [c[0], c[1], c[3]], [k[0], k[1], k[3]]));
+    ts.push(new Triangle([p[0], p[3], p[2]], [n[0], n[3], n[2]], [c[0], c[3], c[2]], [k[0], k[3], k[2]]));
     if (s[(ofs + 1) % 3] < 0) {
       l.push(ts[0]);
       r.push(ts[1]);
@@ -95,10 +109,12 @@ Triangle.prototype.divide = function (that, l, m, r) {
         break;
       }
     }
-    p = []; n = [];
+    p = []; n = []; c = []; k = [];
     for (i = 0; i < 3; ++i) {
       p.push(this.p[(ofs + i) % 3]);
       n.push(this.n[(ofs + i) % 3]);
+      c.push(this.c[(ofs + i) % 3]);
+      k.push(this.k[(ofs + i) % 3]);
     }
     t = that.intersect(p[0], p[1]);
     p.push(vec3.create());
@@ -106,16 +122,24 @@ Triangle.prototype.divide = function (that, l, m, r) {
     n.push(vec3.create());
     vec3.lerp(n[3], n[0], n[1], t);
     vec3.normalize(n[3], n[3]);
+    c.push(vec4.create());
+    vec4.lerp(c[3], c[0], c[1], t);
+    k.push(vec3.create());
+    vec3.lerp(k[3], k[0], k[1], t);
     t = that.intersect(p[0], p[2]);
     p.push(vec3.create());
     vec3.lerp(p[4], p[0], p[2], t);
     n.push(vec3.create());
     vec3.lerp(n[4], n[0], n[2], t);
     vec3.normalize(n[4], n[4]);
+    c.push(vec4.create());
+    vec4.lerp(c[4], c[0], c[2], t);
+    k.push(vec3.create());
+    vec3.lerp(k[4], k[0], k[2], t);
     ts = [];
-    ts.push(new Triangle([p[0], p[3], p[4]], [n[0], n[3], n[4]], this.c, this.k));
-    ts.push(new Triangle([p[1], p[2], p[3]], [n[1], n[2], n[3]], this.c, this.k));
-    ts.push(new Triangle([p[2], p[4], p[3]], [n[2], n[4], n[3]], this.c, this.k));
+    ts.push(new Triangle([p[0], p[3], p[4]], [n[0], n[3], n[4]], [c[0], c[3], c[4]], [k[0], k[3], k[4]]));
+    ts.push(new Triangle([p[1], p[2], p[3]], [n[1], n[2], n[3]], [c[1], c[2], c[3]], [k[1], k[2], k[3]]));
+    ts.push(new Triangle([p[2], p[4], p[3]], [n[2], n[4], n[3]], [c[2], c[4], c[3]], [k[2], k[4], k[3]]));
     if (s[ofs] < 0) {
       l.push(ts[0]);
       r.push(ts[1]);
@@ -129,15 +153,25 @@ Triangle.prototype.divide = function (that, l, m, r) {
 };
 
 var BSPTree = function (ts) {
-  var i, j, l, m, r, n;
-  i = Math.floor(Math.random() * ts.length);
-  l = []; m = []; r = [];
+  var i, j, l, m, r, n, ts0, area, maxArea;
+
+  ts0 = [];
+  maxArea = Number.MIN_VALUE;
   for (j = 0; j < ts.length; ++j) {
-    if (i == j) {
-      m.push(ts[j]);
-    } else {
-      ts[j].divide(ts[i], l, m, r);
+    if (vec3.len(ts[j].a) < eps) continue;
+    area = ts[j].area();
+    if (maxArea < area) {
+      maxArea = area;
+      i = ts0.length;
     }
+    ts0.push(ts[j]);
+  }
+  ts = ts0;
+
+  l = []; m = [ts[i]]; r = [];
+  for (j = 0; j < ts.length; ++j) {
+    if (i == j) continue;
+    ts[j].divide(ts[i], l, m, r);
   }
   this.m = m;
   this.l = this.r = null;
@@ -147,7 +181,6 @@ var BSPTree = function (ts) {
   if (r.length > 0) {
     this.r = new BSPTree(r);
   }
-  this.a = m[0].a;
 };
 
 BSPTree.prototype.depthOrder = function (v) {
@@ -158,7 +191,7 @@ BSPTree.prototype.depthOrder = function (v) {
 
 BSPTree.prototype.traversal = function (v, ts) {
   var l, r;
-  if (vec3.dot(this.a, v) < 0) {
+  if (this.m[0].plane(v) > 0) {
     l = this.l;
     r = this.r;
   } else {

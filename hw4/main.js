@@ -10,6 +10,8 @@ import {Triangle, BSPTree} from "./BSP.js";
 
 var gl = null;
 
+var showWire = false;
+var showMesh = true;
 window.addEventListener("load", init);
 function init() {
   const canvas = document.getElementById("canvas-main");
@@ -39,13 +41,19 @@ function init() {
   document.getElementById("cube").addEventListener("click", function(){
     document.getElementById("model").value = modelCube;
   });
-
+  document.getElementById("wire").addEventListener("change", function(e){
+    showWire = e.target.checked;
+  });
+  document.getElementById("mesh").addEventListener("change", function(e){
+    showMesh = e.target.checked;
+  });
   document.getElementById("adjust_view").addEventListener("click", function(){
-    pHeight = mRadius;
+    pRadius = mRadius * 2;
+    fovy = Math.PI / 4;
     mat4.identity(pMatCur);
   });
 
-  gl.clearColor(0.5, 0.5, 0.5, 1.0);
+  gl.clearColor(0, 0, 0, 1.0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -232,49 +240,115 @@ function parseModel() {
   const ci = (n - 3) * density, cj = m * density;
 
   const vertices = [];
-  var radius = 0;
+  var radius = 0, ns = [], cs = [];
   for (var i = 0; i < ci; ++i) {
-    var t = [];
+    var t = [], tn = [], tc = [];
     for (var j = 0; j < cj; ++j) {
       const v = getPointOnSurface(i / ci, j / cj);
       radius = Math.max(radius, vec3.len(v));
       t.push(v);
+      tn.push(vec3.create());
+      const cx = Math.sin(i / ci * Math.PI * 2) / 2 + 0.5;
+      const cy = Math.sin(j / cj * Math.PI * 2) / 2 + 0.5;
+      tc.push(vec4.fromValues(cx, cy, 0.5, 1));
     }
     vertices.push(t);
+    ns.push(tn);
+    cs.push(tc);
   }
 
-  var ts = [];
-  var t0, t1 = vec3.create();
+  var t0 = vec3.create(), t1 = vec3.create();
   for (var i = 1; i < ci; ++i) {
     for (var j = 0; j < cj; ++j) {
       const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
-      const cx = Math.sin(i / ci * Math.PI * 2) / 2 + 0.5;
-      const cy = Math.sin(j / cj * Math.PI * 2) / 2 + 0.5;
-
-      t0 = vec3.create();
       vec3.sub(t0, vertices[x0][y1], vertices[x0][y0]);
       vec3.sub(t1, vertices[x1][y0], vertices[x0][y0]);
       vec3.cross(t0, t0, t1);
       vec3.normalize(t0, t0);
-      ts.push(new Triangle(
-        [vertices[x0][y0], vertices[x0][y1], vertices[x1][y0]],
-        [t0, t0, t0],
-        vec4.fromValues(cx, cy, 0.5, 0.5),
-        vec3.fromValues(0.5, 0.5, 0)
-      ));
+      vec3.add(ns[x0][y0], ns[x0][y0], t0);
+      vec3.add(ns[x0][y1], ns[x0][y1], t0);
+      vec3.add(ns[x1][y0], ns[x1][y0], t0);
 
-      t0 = vec3.create();
       vec3.sub(t0, vertices[x0][y1], vertices[x1][y0]);
       vec3.sub(t1, vertices[x1][y1], vertices[x1][y0]);
       vec3.cross(t0, t0, t1);
       vec3.normalize(t0, t0);
+      vec3.add(ns[x1][y0], ns[x1][y0], t0);
+      vec3.add(ns[x0][y1], ns[x0][y1], t0);
+      vec3.add(ns[x1][y1], ns[x1][y1], t0);
+    }
+  }
+
+  for (var i = 0; i < ci; ++i) {
+    for (var j = 0; j < cj; ++j) {
+      vec3.normalize(ns[i][j], ns[i][j]);
+    }
+  }
+
+  var ts = [], ks = vec3.fromValues(0.5, 0.5, 0);
+  for (var i = 1; i < ci; ++i) {
+    for (var j = 0; j < cj; ++j) {
+      const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
+
+      ts.push(new Triangle(
+        [vertices[x0][y0], vertices[x0][y1], vertices[x1][y0]],
+        [ns[x0][y0], ns[x0][y1], ns[x1][y0]],
+        [cs[x0][y0], cs[x0][y1], cs[x1][y0]],
+        [ks, ks, ks]
+      ));
+
       ts.push(new Triangle(
         [vertices[x1][y0], vertices[x0][y1], vertices[x1][y1]],
-        [t0, t0, t0],
-        vec4.fromValues(cx, cy, 0.5, 0.5),
-        vec3.fromValues(0.5, 0.5, 0)
+        [ns[x1][y0], ns[x0][y1], ns[x1][y1]],
+        [cs[x1][y0], cs[x0][y1], cs[x1][y1]],
+        [ks, ks, ks]
       ));
     }
+  }
+
+  var cubeP = [
+    [[-1, -1, +1], [+1, -1, +1], [+1, +1, +1]],
+    [[-1, -1, +1], [+1, +1, +1], [-1, +1, +1]],
+    [[-1, -1, -1], [-1, +1, -1], [+1, +1, -1]],
+    [[-1, -1, -1], [+1, +1, -1], [+1, -1, -1]],
+    [[-1, +1, -1], [-1, +1, +1], [+1, +1, +1]],
+    [[-1, +1, -1], [+1, +1, +1], [+1, +1, -1]],
+    [[-1, -1, -1], [+1, -1, -1], [+1, -1, +1]],
+    [[-1, -1, -1], [+1, -1, +1], [-1, -1, +1]],
+    [[+1, -1, -1], [+1, +1, -1], [+1, +1, +1]],
+    [[+1, -1, -1], [+1, +1, +1], [+1, -1, +1]],
+    [[-1, -1, -1], [-1, -1, +1], [-1, +1, +1]],
+    [[-1, -1, -1], [-1, +1, +1], [-1, +1, -1]]
+  ];
+  var cubeN = [
+    [0, 0, +1], [0, 0, +1],
+    [0, 0, -1], [0, 0, -1],
+    [0, +1, 0], [0, +1, 0],
+    [0, -1, 0], [0, -1, 0],
+    [+1, 0, 0], [+1, 0, 0],
+    [-1, 0, 0], [-1, 0, 0]
+  ];
+  var scale, ofs, c, k;
+  function arr2vecT(arr) {
+    var v = vec3.fromValues(arr[0], arr[1], arr[2]);
+    vec3.scale(v, v, scale);
+    vec3.add(v, v, ofs);
+    return v;
+  }
+  function arr2vec(arr) {
+    return vec3.fromValues(arr[0], arr[1], arr[2]);
+  }
+
+  scale = radius / 2, ofs = vec3.fromValues(-radius / 4, radius / 4, -radius / 4);
+  c = vec4.fromValues(0.5, 0.5, 0.5, 0.5);
+  k = vec3.fromValues(0.5, 0.5, 0);
+  for (i = 0; i < 12; ++i) {
+    ts.push(new Triangle(
+      [arr2vecT(cubeP[i][0]), arr2vecT(cubeP[i][1]), arr2vecT(cubeP[i][2])],
+      [arr2vec(cubeN[i]), arr2vec(cubeN[i]), arr2vec(cubeN[i])],
+      [c, c, c],
+      [k, k, k]
+    ));
   }
 
   bspTree = new BSPTree(ts);
@@ -341,7 +415,7 @@ function resize() {
 }
 
 var lastTime = null;
-var pHeight = 50;
+var pRadius = 50, fovy = Math.PI / 4;
 function animate() {
   const currentTime = Date.now();
   if (lastTime) {
@@ -350,8 +424,10 @@ function animate() {
     if (keystate[83]/*s*/) pTranslate([0, mRadius / 1 * delta, 0]);
     if (keystate[65]/*a*/) pTranslate([mRadius / 1 * delta, 0, 0]);
     if (keystate[68]/*d*/) pTranslate([-mRadius / 1 * delta, 0, 0]);
-    if (keystate[70]/*f*/) pHeight -= mRadius / 2 * delta;
-    if (keystate[71]/*g*/) pHeight += mRadius / 2 * delta;
+    if (keystate[82]/*r*/) pRadius -= mRadius / 1 * delta;
+    if (keystate[84]/*t*/) pRadius += mRadius / 1 * delta;
+    if (keystate[70]/*f*/) fovy -= Math.PI / 8 * delta;
+    if (keystate[71]/*g*/) fovy += Math.PI / 8 * delta;
   }
   lastTime = currentTime;
 }
@@ -378,7 +454,8 @@ function drawScene() {
 
   const pMat = mat4.create();
   const aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-  mat4.ortho(pMat, -aspect * pHeight, aspect * pHeight, -pHeight, pHeight, -1000, 1000);
+  mat4.perspective(pMat, fovy, aspect, 0.1, 1000.0);
+  mat4.translate(pMat, pMat, [0, 0, -pRadius]);
   mat4.mul(pMat, pMat, pMatCur);
   gl.uniformMatrix4fv(uPMatrix, false, pMat);
 
@@ -386,30 +463,62 @@ function drawScene() {
 
   var vMat = mat4.create();
   mat4.invert(vMat, pMatCur);
-  var v = vec4.fromValues(0, 0, -1, 0);
+  mat4.translate(vMat, vMat, [0, 0, pRadius]);
+  var v = vec4.fromValues(0, 0, 0, 1);
   vec4.transformMat4(v, v, vMat);
-  var ts = bspTree.depthOrder(v);
-  var arrVertexPosition = [];
-  var arrVertexColor = [];
-  var arrVertexNormal = [];
-  for (var i = 0; i < ts.length; ++i) {
-    for (var j = 0; j < 3; ++j) {
-      Array.prototype.push.apply(arrVertexPosition, ts[i].p[j]);
-      Array.prototype.push.apply(arrVertexColor, ts[i].c);
-      Array.prototype.push.apply(arrVertexNormal, ts[i].n[j]);
+  var ts = bspTree.depthOrder(vec3.fromValues(v[0], v[1], v[2]));
+
+  if (showMesh) {
+    var arrVertexPosition = [];
+    var arrVertexColor = [];
+    var arrVertexNormal = [];
+    for (var i = 0; i < ts.length; ++i) {
+      for (var j = 0; j < 3; ++j) {
+        Array.prototype.push.apply(arrVertexPosition, ts[i].p[j]);
+        Array.prototype.push.apply(arrVertexColor, ts[i].c[j]);
+        Array.prototype.push.apply(arrVertexNormal, ts[i].n[j]);
+      }
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPosition);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexPosition), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexColor);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexColor), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexColor, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexNormal);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexNormal), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+    if (ts.length > 0) {
+      gl.drawArrays(gl.TRIANGLES, 0, ts.length * 3);
     }
   }
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPosition);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexPosition), gl.STATIC_DRAW);
-  gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexColor);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexColor), gl.STATIC_DRAW);
-  gl.vertexAttribPointer(aVertexColor, 4, gl.FLOAT, false, 0, 0);
-  gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexNormal);
-  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexNormal), gl.STATIC_DRAW);
-  gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
-  if (ts.length > 0) {
-    gl.drawArrays(gl.TRIANGLES, 0, ts.length * 3);
+
+  if (showWire) {
+    var arrWireVertexPosition = [];
+    var arrWireVertexColor = [];
+    var arrWireVertexNormal = [];
+    for (var i = 0; i < ts.length; ++i) {
+      for (var j = 0; j < 3; ++j) {
+        Array.prototype.push.apply(arrWireVertexPosition, ts[i].p[j]);
+        Array.prototype.push.apply(arrWireVertexPosition, ts[i].p[(j + 1) % 3]);
+        Array.prototype.push.apply(arrWireVertexColor, [0, 0, 0, 1]);
+        Array.prototype.push.apply(arrWireVertexColor, [0, 0, 0, 1]);
+        Array.prototype.push.apply(arrWireVertexNormal, ts[i].n[j]);
+        Array.prototype.push.apply(arrWireVertexNormal, ts[i].n[(j + 1) % 3]);
+      }
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPosition);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexPosition), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexPosition, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexColor);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexColor), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexColor, 4, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexNormal);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexNormal), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+    if (ts.length > 0) {
+      gl.drawArrays(gl.LINES, 0, ts.length * 6);
+    }
   }
 
   animate();
