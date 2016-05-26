@@ -1,0 +1,139 @@
+\documentclass{article}
+
+\usepackage{kotex}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\begin{document}
+
+\title{Programming Assignment \#4}
+\author{김희훈}
+\maketitle
+
+\section{요약}
+
+본 과제에서는 depth ordering을 이용한 반투명 물체 렌더링, 다양한 광원이 있는 상황에서 Phong illumination model을 이용한 서로 다른 특성을 가진 표면 렌더링을 구현했습니다.
+추가 구현으로서 모든 물체 반투명 렌더링, BSP Tree, BSP 과정에서 나눠진 표면들을 확인하기 위한 테두리 렌더링 기능을 넣었습니다.
+
+\section{컴파일 및 실행}
+
+WebGL을 지원하는 최신 브라우저와 npm이 시스템에 설치되어 있어야 합니다.
+쉘에서 다음 명령어들을 수행하여 컴파일합니다.
+
+\begin{enumerate}
+  \item cd /path/to/src
+  \item npm install
+  \item webpack
+\end{enumerate}
+
+index.html을 브라우저에서 실행하면 됩니다.
+또는 \url{http://csehydrogen.github.io/CG2016HW/hw4/}에서 실행해 볼 수 있습니다.
+최신 Chrome에서 실행을 확인하였습니다.
+
+\section{조작법}
+
+뷰를 마우스 드래그로 회전, wasd로 translate, rt로 dolly in/out, fg로 zoom in/out 할 수 있습니다.
+렌더링을 위해서는 먼저 model칸에 데이터를 입력하거나 밑의 버튼을 눌러 사전에 정의된 모델을 자동 입력해야합니다.
+그리고 density(자연수)를 지정한 후 apply를 누르면 렌더링 됩니다.
+모든 물체 반투명화를 원한다면 apply를 누르기 이전에 translucent를 체크해 주세요.
+wire, mesh 체크박스를 통해 렌더링 여부를 조절할 수 있습니다.
+adjust view 버튼은 모델이 중앙에 오도록 view를 초기 위치로 조절해 줍니다.
+
+\section{반투명 물체의 렌더링}
+
+z-Buffer 만으로 반투명 물체의 렌더링을 흉내내려면 gl의 DEPTH\_TEST 대신 BLEND를 켠 후 깊은 순서대로 렌더링해야 합니다.
+이번 숙제에서는 물체가 고정되어 있고 뷰만 바뀌는 상황이므로 BSP Tree를 구현하면 O(n)만에 depth ordering을 수행할 수 있습니다.
+문제의 단순화를 위해 모든 표면을 삼각형 primitive만을 이용해 렌더링 하였습니다.
+
+\subsection{BSP Tree construct}
+
+BSP Tree의 생성은 BSP.js 안의 클래스 BSPTree의 생성자가 담당합니다.
+이 생성자는 삼각형의 목록을 받아 다음의 알고리즘을 수행합니다.
+
+\begin{enumerate}
+  \item
+    가장 큰 삼각형 $T_i$를 찾습니다.
+    이는 분할되는 표면의 갯수를 줄이는 효과적인 휴리스틱입니다.
+  \item
+    모든 삼각형 $T_j$를 $T_i$가 포함된 평면으로 분할합니다.
+    $T_j$는 분할 되지 않거나, 두 개의 삼각형으로 분할되거나, 삼각형과 사각형으로 분할됩니다.
+    마지막 경우에서 사각형을 두 개의 삼각형으로 분할한다면, $T_j$는 최종적으로 최대 3개의 삼각형으로 분할됩니다.
+  \item
+    $T_i$의 법선 벡터를 기준으로 +방향에 있는지, 평면에 정확히 속하는지, -방향에 있는지를 판단하여 분할된 삼각형을 각각 리스트 $r$, $m$, $l$에 나누어 담습니다.
+  \item
+    리스트 $m$은 현재 노드에 저장하고, 리스트 $r$이 비어있지 않다면 $r$로 생성자를 재귀호출하여 서브트리를 만들어서 오른쪽 자식으로 삼습니다.
+    $l$도 같은 방식으로 처리하여 왼쪽 자식을 만듭니다.
+\end{enumerate}
+
+\subsection{Depth ordering}
+
+BSP Tree가 생성되어 있으면, 매 프레임마다 BSPTree.depthOrder을 호출하여 깊이 순으로 정렬된 삼각형 리스트를 넘겨받습니다.
+이 함수는 먼저 현재 카메라 좌표가 $m$의 첫번째 삼각형이 속하는 평면을 기준으로 양의 방향에 있는지 음의 방향에 있는지 판단합니다.
+만약 양의 방향에 있다면, 음의 방향에 있는 삼각형들, 즉 왼쪽 자식에 속한 삼각형을 먼저 렌더링 해야 되므로 왼쪽 자식을 먼저 방문하는 중위 순회를 수행합니다.
+음의 방향이라면 반대 방향의 중위 순회를 수행합니다.
+순회하면서 각 노드의 리스트 $m$을 차례대로 연결하면 깊이 순으로 정렬된 리스트가 됩니다.
+
+\section{다양한 물질 표면 렌더링}
+
+Phong illumination model을 사용하였으며 파라미터를 조정하여 다른 물질의 느낌을 내고자 하였습니다. 사용한 식은 다음과 같습니다.
+
+\begin{equation*}
+  I=k_aI_a+\Sigma_l\left(k_dI_l(N \cdot L)+k_sI_l(R \cdot V)^n\right)
+\end{equation*}
+
+$k_a$는 ambient 계수, $k_d$는 diffuse 계수, $k_s$는 specular 계수, $n$은 shininess, $I_a$는 ambient light의 밝기, $I_l$은 light source들의 밝기, $N$은 법선 벡터, $L$은 광원 벡터, $V$는 뷰 벡터, $R$은 빛이 반사되는 방향 벡터입니다.
+$k_a$, $k_d$, $k_s$를 삼각형마다 설정해놓고, fragment shader에서 I를 계산하여 색 벡터와 곱하면 최종 색을 구할 수 있습니다.
+계산 과정은 shader.frag에서 확인할 수 있습니다.
+
+시연을 위해 큐브 5개와 점광원 5개를 사용하였습니다.
+큐브의 각 면에 사용한 파라미터와 광원의 정보는 \autoref{fig:cube}와 \autoref{fig:light}를 참고해 주세요.
++z 방향의 점광원이 흰색이므로 색깔의 영향을 받지 않고 material을 판단하고자 할때는 큐브의 정면을 보는게 좋습니다.
+
+\begin{figure}[ht]
+  \centering
+  \begin{tabular}{c c c c}
+    위치 & material & 색깔 & 파라미터 \\
+    \midrule
+    좌 & metal & white (1.0, 1.0, 1.0) & (0.1, 0.1, 0.8, 32) \\
+    중앙 & plastic & blue (0.4, 0.4, 1.0) & (0.2, 0.4, 0.4, 4) \\
+    우 & mirror & white (1.0, 1.0, 1.0) & (0.0, 0.0, 1.0, 64) \\
+    하 & rubber & grey (0.3, 0.3, 0.3) & (0.9, 0.1, 0.0, 1) \\
+    상 & ruby & red (1.0, 0.2, 0.3) & (0.2, 0.0, 0.8, 16) \\
+  \end{tabular}
+  \caption{
+    큐브 5개에 대한 자세한 정보.
+    위치는 adjust view 이후 정면에서 바라봤을 때 기준.
+    색깔은 (r, g, b), 파라미터는 ($k_a$, $k_d$, $k_s$, $n$).
+    \label{fig:cube}
+  }
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \begin{tabular}{c c c c}
+    번호 & 위치 & 색깔 \\
+    \midrule
+    ambient & - & white (1, 1, 1) \\
+    0 & (0, 0, d) & white (1, 1, 1) \\
+    1 & (d, d, -d) & yellow (1, 1, 0) \\
+    2 & (-d, d, -d) & red (1, 0, 0) \\
+    3 & (-d, -d, -d) & green (0, 1, 0) \\
+    4 & (d, -d, -d) & blue (0, 0, 1) \\
+  \end{tabular}
+  \caption{
+    광원 5개에 대한 자세한 정보.
+    위치는 (x, y, z), 색깔은 (r, g, b).
+    d는 모델의 정점 중 원점에서 가장 먼 점까지의 거리로, 모델 크기에 따라 광원까지의 거리도 비례해서 커지도록 하였음.
+    \label{fig:light}
+  }
+\end{figure}
+
+\section{추가 구현}
+
+\begin{itemize}
+  \item Depth ordering에 BSP Tree를 구현하여 사용하였고, 시연 및 디버깅 목적으로 BSP 과정에서 잘려진 평면들을 보기 위해 테두리 렌더링 옵션을 추가하였습니다.
+  \item 반투명 렌더링이 이 과제에만 적용되도록 ad-hoc하게 짜여진게 아니라, 보다 일반적인 복잡한 도형에도 적용될 수 있다는 점을 보이기 위해서 모든 물체를 반투명으로 렌더링 하는 옵션을 추가하였습니다.
+\end{itemize}
+
+\end{document}
