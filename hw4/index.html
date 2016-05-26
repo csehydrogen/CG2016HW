@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <head>
+    <title>HW4</title>
+    <script src="bundle.js"></script>
+  </head>
+  <body>
+    <canvas id="canvas-main">
+      Your browser doesn't appear to support the <code>&lt;canvas&gt;</code> element.
+    </canvas>
+    <p id="instruction">
+    mouse drag : trackball<br>
+    wsad : translate<br>
+    rt : dolly in/out<br>
+    fg : zoom in/out<br>
+    <span id="fps"></span>
+    </p>
+    <div id="model-input">
+      model<br>
+      <textarea id="model"></textarea><br>
+      <button id="trombone">trombone</button><br>
+      <button id="coke_bottle">coke_bottle</button><br>
+      <button id="klein_bottle">klein_bottle</button><br>
+      <button id="cube">cube</button><br>
+      density<br>
+      <input id="density" type="text" value="1"><br>
+      translucent<input id="translucent" type="checkbox"><br>
+      <button id="apply">apply</button><br>
+      wire<input id="wire" type="checkbox"><br>
+      mesh<input id="mesh" type="checkbox" checked><br>
+      <button id="adjust_view">adjust view</button><br>
+    </div>
+  </body>
+</html>
