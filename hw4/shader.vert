@@ -1,23 +1,22 @@
-attribute highp vec3 aVertexPosition;
-attribute highp vec4 aVertexColor;
-attribute highp vec3 aVertexNormal;
+attribute vec3 aVertexPosition;
+attribute vec4 aVertexColor;
+attribute vec3 aVertexNormal;
+attribute vec4 aVertexPhong;
 
-uniform highp mat4 uMVMatrix;
-uniform highp mat4 uPMatrix;
-uniform highp mat4 uNMatrix;
+uniform mat4 uMVMatrix;
+uniform mat4 uPMatrix;
+uniform mat4 uNMatrix;
 
-varying highp vec4 vColor;
-varying highp vec3 vLighting;
+varying vec3 vPosition;
+varying vec4 vColor;
+varying vec3 vNormal;
+varying vec4 vPhong;
 
 void main() {
-  gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
+  vPosition = (uMVMatrix * vec4(aVertexPosition, 1.0)).xyz;
   vColor = aVertexColor;
+  vNormal = (uNMatrix * vec4(aVertexNormal, 0.0)).xyz;
+  vPhong = aVertexPhong;
 
-  highp vec3 ambientLight = vec3(0.6, 0.6, 0.6);
-  highp vec3 directionalLightColor = vec3(0.5, 0.5, 0.75);
-  highp vec3 directionalVector = vec3(0.85, 0.8, 0.75);
-
-  highp vec4 transformedNormal = uNMatrix * vec4(aVertexNormal, 1.0);
-
-  highp float directional = max(dot(transformedNormal.xyz, directionalVector), 0.0);
+  gl_Position = uPMatrix * uMVMatrix * vec4(aVertexPosition, 1.0);
 }

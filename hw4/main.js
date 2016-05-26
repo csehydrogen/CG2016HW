@@ -12,6 +12,8 @@ var gl = null;
 
 var showWire = false;
 var showMesh = true;
+var showTranslucent = false;
+var spanFPS = null;
 window.addEventListener("load", init);
 function init() {
   const canvas = document.getElementById("canvas-main");
@@ -41,6 +43,9 @@ function init() {
   document.getElementById("cube").addEventListener("click", function(){
     document.getElementById("model").value = modelCube;
   });
+  document.getElementById("translucent").addEventListener("change", function(e){
+    showTranslucent = e.target.checked;
+  });
   document.getElementById("wire").addEventListener("change", function(e){
     showWire = e.target.checked;
   });
@@ -48,12 +53,13 @@ function init() {
     showMesh = e.target.checked;
   });
   document.getElementById("adjust_view").addEventListener("click", function(){
-    pRadius = mRadius * 2;
+    pRadius = mRadius * 3;
     fovy = Math.PI / 4;
     mat4.identity(pMatCur);
   });
+  spanFPS = document.getElementById("fps");
 
-  gl.clearColor(0, 0, 0, 1.0);
+  gl.clearColor(1.0, 1.0, 0.9, 1.0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
@@ -67,9 +73,12 @@ function init() {
 var aVertexPosition = null;
 var aVertexColor = null;
 var aVertexNormal = null;
+var aVertexPhong = null;
 var uPMatrix = null;
 var uMVMatrix = null;
 var uNMatrix = null;
+var uView = null;
+var uRadius = null;
 function initShaders() {
   const shaderProgram = gl.createProgram();
   gl.attachShader(shaderProgram, getShader(fragementShaderSource, gl.FRAGMENT_SHADER));
@@ -87,9 +96,13 @@ function initShaders() {
   gl.enableVertexAttribArray(aVertexColor);
   aVertexNormal = gl.getAttribLocation(shaderProgram, "aVertexNormal");
   gl.enableVertexAttribArray(aVertexNormal);
+  aVertexPhong = gl.getAttribLocation(shaderProgram, "aVertexPhong");
+  gl.enableVertexAttribArray(aVertexPhong);
   uPMatrix = gl.getUniformLocation(shaderProgram, "uPMatrix")
   uMVMatrix = gl.getUniformLocation(shaderProgram, "uMVMatrix")
   uNMatrix = gl.getUniformLocation(shaderProgram, "uNMatrix")
+  uView = gl.getUniformLocation(shaderProgram, "uView")
+  uRadius = gl.getUniformLocation(shaderProgram, "uRadius")
 }
 
 function getShader(source, type) {
@@ -107,10 +120,12 @@ var mRadius = 0;
 var bufVertexPosition = null;
 var bufVertexColor = null;
 var bufVertexNormal = null;
+var bufVertexPhong = null;
 function initBuffers() {
   bufVertexPosition = gl.createBuffer();
   bufVertexColor = gl.createBuffer();
   bufVertexNormal = gl.createBuffer();
+  bufVertexPhong = gl.createBuffer();
 }
 
 var bspTree = null;
@@ -239,6 +254,11 @@ function parseModel() {
   const density = parseInt(document.getElementById("density").value);
   const ci = (n - 3) * density, cj = m * density;
 
+  var alpha = 1;
+  if (showTranslucent) {
+    alpha = 0.5;
+  }
+
   const vertices = [];
   var radius = 0, ns = [], cs = [];
   for (var i = 0; i < ci; ++i) {
@@ -250,7 +270,7 @@ function parseModel() {
       tn.push(vec3.create());
       const cx = Math.sin(i / ci * Math.PI * 2) / 2 + 0.5;
       const cy = Math.sin(j / cj * Math.PI * 2) / 2 + 0.5;
-      tc.push(vec4.fromValues(cx, cy, 0.5, 1));
+      tc.push(vec4.fromValues(cx, cy, 0.5, alpha));
     }
     vertices.push(t);
     ns.push(tn);
@@ -285,7 +305,7 @@ function parseModel() {
     }
   }
 
-  var ts = [], ks = vec3.fromValues(0.5, 0.5, 0);
+  var ts = [], ks = vec4.fromValues(0.6, 0.2, 0.2, 1);
   for (var i = 1; i < ci; ++i) {
     for (var j = 0; j < cj; ++j) {
       const x0 = i - 1, x1 = i, y0 = j, y1 = (j + 1) % cj;
@@ -338,18 +358,51 @@ function parseModel() {
   function arr2vec(arr) {
     return vec3.fromValues(arr[0], arr[1], arr[2]);
   }
+  function addCube() {
+    for (i = 0; i < 12; ++i) {
+      ts.push(new Triangle(
+        [arr2vecT(cubeP[i][0]), arr2vecT(cubeP[i][1]), arr2vecT(cubeP[i][2])],
+        [arr2vec(cubeN[i]), arr2vec(cubeN[i]), arr2vec(cubeN[i])],
+        [c, c, c],
+        [k, k, k]
+      ));
+    }
+  }
 
   scale = radius / 2, ofs = vec3.fromValues(-radius / 4, radius / 4, -radius / 4);
-  c = vec4.fromValues(0.5, 0.5, 0.5, 0.5);
-  k = vec3.fromValues(0.5, 0.5, 0);
-  for (i = 0; i < 12; ++i) {
-    ts.push(new Triangle(
-      [arr2vecT(cubeP[i][0]), arr2vecT(cubeP[i][1]), arr2vecT(cubeP[i][2])],
-      [arr2vec(cubeN[i]), arr2vec(cubeN[i]), arr2vec(cubeN[i])],
-      [c, c, c],
-      [k, k, k]
-    ));
-  }
+  c = vec4.fromValues(0.3, 0.3, 0.3, 0.5);
+  k = vec4.fromValues(0.9, 0.1, 0.0, 1);
+  addCube();
+
+  // ruby
+  scale = radius / 4, ofs = vec3.fromValues(0, radius, radius);
+  c = vec4.fromValues(1.0, 0.2, 0.3, alpha);
+  k = vec4.fromValues(0.2, 0.0, 0.8, 16);
+  addCube();
+
+  // rubber
+  scale = radius / 4, ofs = vec3.fromValues(0, -radius, radius);
+  c = vec4.fromValues(0.3, 0.3, 0.3, alpha);
+  k = vec4.fromValues(0.9, 0.1, 0.0, 1);
+  addCube();
+
+  // mirror
+  scale = radius / 4, ofs = vec3.fromValues(radius, 0, radius);
+  c = vec4.fromValues(1.0, 1.0, 1.0, alpha);
+  k = vec4.fromValues(0.0, 0.0, 1.0, 64);
+  addCube();
+
+  // plastic
+  scale = radius / 4, ofs = vec3.fromValues(0, 0, radius);
+  c = vec4.fromValues(0.4, 0.4, 1.0, alpha);
+  k = vec4.fromValues(0.2, 0.4, 0.4, 4);
+  addCube();
+
+  // metal
+  scale = radius / 4, ofs = vec3.fromValues(-radius, 0, radius);
+  c = vec4.fromValues(1.0, 1.0, 1.0, alpha);
+  k = vec4.fromValues(0.1, 0.1, 0.8, 32);
+  addCube();
 
   bspTree = new BSPTree(ts);
   mRadius = radius;
@@ -428,6 +481,7 @@ function animate() {
     if (keystate[84]/*t*/) pRadius += mRadius / 1 * delta;
     if (keystate[70]/*f*/) fovy -= Math.PI / 8 * delta;
     if (keystate[71]/*g*/) fovy += Math.PI / 8 * delta;
+    spanFPS.innerHTML = Math.floor(1 / delta) + " fps";
   }
   lastTime = currentTime;
 }
@@ -466,17 +520,23 @@ function drawScene() {
   mat4.translate(vMat, vMat, [0, 0, pRadius]);
   var v = vec4.fromValues(0, 0, 0, 1);
   vec4.transformMat4(v, v, vMat);
-  var ts = bspTree.depthOrder(vec3.fromValues(v[0], v[1], v[2]));
+  var v3 = vec3.fromValues(v[0], v[1], v[2]);
+  gl.uniform3fv(uView, v3);
+  gl.uniform1f(uRadius, mRadius);
+
+  var ts = bspTree.depthOrder(v3);
 
   if (showMesh) {
     var arrVertexPosition = [];
     var arrVertexColor = [];
     var arrVertexNormal = [];
+    var arrVertexPhong = [];
     for (var i = 0; i < ts.length; ++i) {
       for (var j = 0; j < 3; ++j) {
         Array.prototype.push.apply(arrVertexPosition, ts[i].p[j]);
         Array.prototype.push.apply(arrVertexColor, ts[i].c[j]);
         Array.prototype.push.apply(arrVertexNormal, ts[i].n[j]);
+        Array.prototype.push.apply(arrVertexPhong, ts[i].k[j]);
       }
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPosition);
@@ -488,6 +548,9 @@ function drawScene() {
     gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexNormal);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexNormal), gl.STATIC_DRAW);
     gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPhong);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrVertexPhong), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexPhong, 4, gl.FLOAT, false, 0, 0);
     if (ts.length > 0) {
       gl.drawArrays(gl.TRIANGLES, 0, ts.length * 3);
     }
@@ -497,14 +560,17 @@ function drawScene() {
     var arrWireVertexPosition = [];
     var arrWireVertexColor = [];
     var arrWireVertexNormal = [];
+    var arrWireVertexPhong = [];
     for (var i = 0; i < ts.length; ++i) {
       for (var j = 0; j < 3; ++j) {
         Array.prototype.push.apply(arrWireVertexPosition, ts[i].p[j]);
         Array.prototype.push.apply(arrWireVertexPosition, ts[i].p[(j + 1) % 3]);
-        Array.prototype.push.apply(arrWireVertexColor, [0, 0, 0, 1]);
-        Array.prototype.push.apply(arrWireVertexColor, [0, 0, 0, 1]);
+        Array.prototype.push.apply(arrWireVertexColor, ts[i].c[j]);
+        Array.prototype.push.apply(arrWireVertexColor, ts[i].c[(j + 1) % 3]);
         Array.prototype.push.apply(arrWireVertexNormal, ts[i].n[j]);
         Array.prototype.push.apply(arrWireVertexNormal, ts[i].n[(j + 1) % 3]);
+        Array.prototype.push.apply(arrWireVertexPhong, ts[i].k[j]);
+        Array.prototype.push.apply(arrWireVertexPhong, ts[i].k[(j + 1) % 3]);
       }
     }
     gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPosition);
@@ -516,6 +582,9 @@ function drawScene() {
     gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexNormal);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexNormal), gl.STATIC_DRAW);
     gl.vertexAttribPointer(aVertexNormal, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, bufVertexPhong);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arrWireVertexPhong), gl.STATIC_DRAW);
+    gl.vertexAttribPointer(aVertexPhong, 4, gl.FLOAT, false, 0, 0);
     if (ts.length > 0) {
       gl.drawArrays(gl.LINES, 0, ts.length * 6);
     }

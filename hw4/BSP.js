@@ -5,7 +5,7 @@ var eps = 1e-2;
 // p: vec3 array of len 3, points
 // n: vec3 array of len 3, normals
 // c: vec4 array of len 3, color
-// k: vec3 array of len 3, shading parameters
+// k: vec4 array of len 3, shading parameters
 // ax+b represent plane including triangle
 var Triangle = function (p, n, c, k) {
   var i, t;
@@ -90,8 +90,8 @@ Triangle.prototype.divide = function (that, l, m, r) {
     vec3.normalize(n[3], n[3]);
     c.push(vec4.create());
     vec4.lerp(c[3], c[1], c[2], t);
-    k.push(vec3.create());
-    vec3.lerp(k[3], k[1], k[2], t);
+    k.push(vec4.create());
+    vec4.lerp(k[3], k[1], k[2], t);
     ts = [];
     ts.push(new Triangle([p[0], p[1], p[3]], [n[0], n[1], n[3]], [c[0], c[1], c[3]], [k[0], k[1], k[3]]));
     ts.push(new Triangle([p[0], p[3], p[2]], [n[0], n[3], n[2]], [c[0], c[3], c[2]], [k[0], k[3], k[2]]));
@@ -124,8 +124,8 @@ Triangle.prototype.divide = function (that, l, m, r) {
     vec3.normalize(n[3], n[3]);
     c.push(vec4.create());
     vec4.lerp(c[3], c[0], c[1], t);
-    k.push(vec3.create());
-    vec3.lerp(k[3], k[0], k[1], t);
+    k.push(vec4.create());
+    vec4.lerp(k[3], k[0], k[1], t);
     t = that.intersect(p[0], p[2]);
     p.push(vec3.create());
     vec3.lerp(p[4], p[0], p[2], t);
@@ -134,8 +134,8 @@ Triangle.prototype.divide = function (that, l, m, r) {
     vec3.normalize(n[4], n[4]);
     c.push(vec4.create());
     vec4.lerp(c[4], c[0], c[2], t);
-    k.push(vec3.create());
-    vec3.lerp(k[4], k[0], k[2], t);
+    k.push(vec4.create());
+    vec4.lerp(k[4], k[0], k[2], t);
     ts = [];
     ts.push(new Triangle([p[0], p[3], p[4]], [n[0], n[3], n[4]], [c[0], c[3], c[4]], [k[0], k[3], k[4]]));
     ts.push(new Triangle([p[1], p[2], p[3]], [n[1], n[2], n[3]], [c[1], c[2], c[3]], [k[1], k[2], k[3]]));
