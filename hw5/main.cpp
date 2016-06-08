@@ -105,7 +105,8 @@ public:
   Vec3 getColor(double u, double v) {
     int h = img.TellHeight();
     int w = img.TellWidth();
-    u = u - floor(u); v = v - floor(v);
+    u = fmod(u, 1); u = u < 1 ? u : u - 1;
+    v = fmod(v, 1); v = v < 1 ? v : v - 1;
     int x0 = h * u, x1 = (x0 + 1) % h;
     int y0 = w * v, y1 = (y0 + 1) % w;
     double dx = h * u - x0, dy = w * v - y0;
@@ -340,11 +341,11 @@ void render() {
 
 int main() {
   Texture *tEarth = new Texture("earth.bmp");
-  Obj *oCube = new Obj("cube.obj", false);
+  Obj *oCube = new Obj("cube_textured.obj", true);
 
   //objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
   objs.push_back(new Sphere(Vec3(0, 0, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
-  objs.push_back(new Polyhedron(oCube, Vec3(0, -20, -30), 20, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1));
+  objs.push_back(new Polyhedron(oCube, Vec3(0, -20, -30), 20, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
   lights.push_back(Light(Vec3(0, 0, 0), Vec3(1, 1, 1)));
   lights.push_back(Light(Vec3(0, 20, -30), Vec3(1, 1, 1)));
 
