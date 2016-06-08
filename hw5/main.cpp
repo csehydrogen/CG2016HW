@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <cstring>
 #include <cmath>
 #include <cfloat>
 #include <vector>
@@ -33,6 +34,9 @@ public:
   double dot(Vec3 const &rhs) {
     return x * rhs.x + y * rhs.y + z * rhs.z;
   }
+  Vec3 cross(Vec3 const &rhs) {
+    return Vec3(y * rhs.z - z * rhs.y, z * rhs.x - x * rhs.z, x * rhs.y - y * rhs.x);
+  }
   Vec3 operator-(Vec3 const &rhs) {
     return Vec3(x - rhs.x, y - rhs.y, z - rhs.z);
   }
@@ -47,6 +51,35 @@ public:
   }
   Vec3 operator-() {
     return Vec3(-x, -y, -z);
+  }
+};
+
+class Triangle {
+public:
+  Vec3 p[3], n[3], t[3], pn;
+  double pd;
+  Triangle(Vec3 _p[3], Vec3 _n[3]) {
+    for (int i = 0; i < 3; ++i) {
+      p[i] = _p[i];
+      n[i] = _n[i];
+    }
+    pn = (p[1] - p[0]).cross(p[2] - p[0]).normalize();
+    pd = -pn.dot(p[0]);
+  }
+  Triangle(Vec3 _p[3], Vec3 _n[3], Vec3 _t[3]) {
+    for (int i = 0; i < 3; ++i) {
+      p[i] = _p[i];
+      n[i] = _n[i];
+      t[i] = _t[i];
+    }
+    pn = (p[1] - p[0]).cross(p[2] - p[0]).normalize();
+    pd = -pn.dot(p[0]);
+  }
+  void scaleAndAdd(double scale, Vec3 ofs) {
+    for (int i = 0; i < 3; ++i) {
+      p[i] = p[i] * scale + ofs;
+    }
+    pd = -pn.dot(p[0]);
   }
 };
 
@@ -78,6 +111,56 @@ public:
     double dx = h * u - x0, dy = w * v - y0;
     return (getPixel(y0, x0) * (1 - dx) + getPixel(y0, x1) * dx) * (1 - dy)
         + (getPixel(y1, x0) * (1 - dx) + getPixel(y1, x1) * dx) * dy;
+  }
+};
+
+class Obj {
+public:
+  vector<Triangle> ts;
+  Obj(char const *fn, bool texture) {
+    vector<Vec3> v, vt, vn;
+    FILE *f = fopen(fn, "r");
+    char buf[1024];
+    while (fgets(buf, sizeof(buf), f)) {
+      if (buf[0] == 'v') {
+        if (buf[1] == ' ') {
+          double x, y, z;
+          sscanf(buf, "v %lf %lf %lf", &x, &y, &z);
+          v.push_back(Vec3(x, y, z));
+        } else if (buf[1] == 't') {
+          double u, v;
+          sscanf(buf, "vt %lf %lf", &u, &v);
+          vt.push_back(Vec3(u, v));
+        } else if (buf[1] == 'n') {
+          double x, y, z;
+          sscanf(buf, "vn %lf %lf %lf", &x, &y, &z);
+          vn.push_back(Vec3(x, y, z).normalize());
+        }
+      } else if (buf[0] == 'f') {
+        char *s = strtok(buf, " ");
+        Vec3 p[3], t[3], n[3];
+        for (int i = 0; i < 3; ++i) {
+          s = strtok(NULL, " ");
+          int x, y, z;
+          if (texture) {
+            sscanf(s, "%d/%d/%d", &x, &y, &z);
+            p[i] = v[x - 1];
+            t[i] = vt[y - 1];
+            n[i] = vn[z - 1];
+          } else {
+            sscanf(s, "%d//%d", &x, &z);
+            p[i] = v[x - 1];
+            n[i] = vn[z - 1];
+          }
+        }
+        if (texture) {
+          ts.push_back(Triangle(p, n, t));
+        } else {
+          ts.push_back(Triangle(p, n));
+        }
+      }
+    }
+    fclose(f);
   }
 };
 
@@ -139,6 +222,60 @@ public:
   }
 };
 
+class Polyhedron: public Object {
+  vector<Triangle> ts;
+public:
+  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _c, double _ka, double _kd, double _ks, double _kn, double _a, double _n, Texture *_texture = nullptr): Object(_c, _ka, _kd, _ks, _kn, _a, _n, _texture) {
+    for (Triangle &t: obj->ts) {
+      ts.push_back(t);
+    }
+    for (Triangle &t: ts) {
+      t.scaleAndAdd(scale, ofs);
+    }
+  }
+  tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
+    double mr = DBL_MAX; Triangle *mt; Vec3 mbc;
+    double denom;
+    for (Triangle &triangle: ts) {
+      denom = triangle.pn.dot(u);
+      if (denom == 0) continue;
+      double r = -(triangle.pd + triangle.pn.dot(p)) / denom;
+      if (r < EPS) continue;
+      Vec3 w = p + u * r - triangle.p[0];
+      Vec3 u = triangle.p[1] - triangle.p[0];
+      Vec3 v = triangle.p[2] - triangle.p[0];
+      double uv = u.dot(v), uu = u.sqrlen(), vv = v.sqrlen();
+      double wv = w.dot(v), wu = w.dot(u);
+      denom = uv * uv - uu * vv;
+      double s = (uv * wv - vv * wu) / denom;
+      double t = (uv * wu - uu * wv) / denom;
+      if (s < 0 || t < 0 || s + t > 1) continue;
+      if (mr > r) {
+        mr = r; mt = &triangle; mbc = Vec3(1 - s - t, s, t);
+      }
+    }
+    if (mr == DBL_MAX) return make_tuple(DBL_MAX, nullptr, nullptr);
+    return make_tuple(mr, this, new tuple<Triangle*, Vec3>(mt, mbc));
+  }
+  // return normal and color
+  tuple<Vec3, Vec3> getInfo(void *i) {
+    tuple<Triangle*, Vec3> *p = (tuple<Triangle*, Vec3>*)i;
+    Triangle *t; Vec3 bc;
+    tie(t, bc) = *p;
+    delete p;
+
+    Vec3 n = (t->n[0] * bc.x + t->n[1] * bc.y + t->n[2] * bc.z).normalize();
+    Vec3 c;
+    if (texture != nullptr) {
+      Vec3 tp = t->t[0] * bc.x + t->t[1] * bc.y + t->t[2] * bc.z;
+      c = texture->getColor(tp.x, tp.y);
+    } else {
+      c = this->c;
+    }
+    return make_tuple(n, c);
+  }
+};
+
 vector<Object*> objs;
 vector<Light> lights;
 
@@ -157,7 +294,6 @@ Vec3 trace(Vec3 p, Vec3 u, Light *light = nullptr) {
   } else {
     if (ms > light->vec2light(p).len()) return light->c;
   }
-
 
   Vec3 n, qc;
   tie(n, qc) = mo->getInfo(mi);
@@ -180,7 +316,7 @@ Vec3 trace(Vec3 p, Vec3 u, Light *light = nullptr) {
 }
 
 void render() {
-  int h = 1000, w = 1000;
+  int h = 256, w = 256;
   double fovy = PI / 2, near = 1;
   double pph = near * tan(fovy / 2) * 2;
   double ppw = pph * w / h;
@@ -204,13 +340,18 @@ void render() {
 
 int main() {
   Texture *tEarth = new Texture("earth.bmp");
-  objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
+  Obj *oCube = new Obj("cube.obj", false);
+
+  //objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
   objs.push_back(new Sphere(Vec3(0, 0, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
+  objs.push_back(new Polyhedron(oCube, Vec3(0, -20, -30), 20, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1));
+  lights.push_back(Light(Vec3(0, 0, 0), Vec3(1, 1, 1)));
   lights.push_back(Light(Vec3(0, 20, -30), Vec3(1, 1, 1)));
 
   render();
 
   for (Object *obj: objs) delete obj;
   delete tEarth;
+  delete oCube;
   return 0;
 }
