@@ -55,7 +55,7 @@ public:
   Vec3 p, c;
   Light(Vec3 _p, Vec3 _c): p(_p), c(_c) {}
   Vec3 vec2light(Vec3 v) {
-    return (p - v).normalize();
+    return p - v;
   }
 };
 
@@ -117,13 +117,13 @@ Vec3 trace(Vec3 p, Vec3 u, Light *light = nullptr) {
       tie(ms, mo, mi) = tie(s, o, i);
     }
   }
-  if (ms == DBL_MAX) {
-    if (light == nullptr) {
-      return Vec3(0, 0, 0);
-    } else {
-      return light->c;
-    }
+
+  if (light == nullptr) {
+    if (ms == DBL_MAX) return Vec3(0, 0, 0);
+  } else {
+    if (ms > light->vec2light(p).len()) return light->c;
   }
+
 
   Vec3 n, qc;
   tie(n, qc) = mo->getInfo(mi);
@@ -131,7 +131,7 @@ Vec3 trace(Vec3 p, Vec3 u, Light *light = nullptr) {
   Vec3 q(p + u * ms);
   Vec3 slc(mo->ka, mo->ka, mo->ka);
   for (Light &light: lights) {
-    Vec3 l = light.vec2light(q);
+    Vec3 l = light.vec2light(q).normalize();
     double a = 1;
     if (n.dot(v) * n.dot(l) < 0) {
       if (mo->a == 1) continue;
