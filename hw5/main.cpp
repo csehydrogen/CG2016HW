@@ -59,13 +59,37 @@ public:
   }
 };
 
+class Texture {
+public:
+  BMP img;
+  Texture(char const *fn) {
+    img.ReadFromFile(fn);
+  }
+  Vec3 getPixel(int i, int j) {
+    RGBApixel *p = img(i, j);
+    return Vec3(p->Red / 255.0, p->Green / 255.0, p->Blue / 255.0);
+  }
+  Vec3 getColor(double u, double v) {
+    int h = img.TellHeight();
+    int w = img.TellWidth();
+    u = u - floor(u); v = v - floor(v);
+    int x0 = h * u, x1 = (x0 + 1) % h;
+    int y0 = w * v, y1 = (y0 + 1) % w;
+    double dx = h * u - x0, dy = w * v - y0;
+    return (getPixel(y0, x0) * (1 - dx) + getPixel(y0, x1) * dx) * (1 - dy)
+        + (getPixel(y1, x0) * (1 - dx) + getPixel(y1, x1) * dx) * dy;
+  }
+};
+
 class Object {
 public:
   Vec3 c; // color
   double ka, kd, ks, kn; // phong illumination coefficients
   double a, n; // transparency and index of refraction
-  Object(Vec3 _c, double _ka, double _kd, double _ks, double _kn, double _a, double _n):
-    c(_c), ka(_ka), kd(_kd), ks(_ks), kn(_kn), a(_a), n(_n) {}
+  Texture *texture;
+  Object(Vec3 _c, double _ka, double _kd, double _ks, double _kn, double _a, double _n,
+      Texture *_texture): c(_c), ka(_ka), kd(_kd), ks(_ks), kn(_kn), a(_a),
+      n(_n), texture(_texture) {}
 
   virtual tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     return make_tuple(DBL_MAX, nullptr, nullptr);
@@ -80,7 +104,8 @@ class Sphere: public Object {
   double r; // radius
 public:
   Sphere(Vec3 _o, double _r, Vec3 _c, double _ka, double _kd, double _ks, double _kn,
-      double _a, double _n): o(_o), r(_r), Object(_c, _ka, _kd, _ks, _kn, _a, _n) {}
+      double _a, double _n, Texture *_texture = nullptr): o(_o), r(_r),
+      Object(_c, _ka, _kd, _ks, _kn, _a, _n, _texture) {}
   tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     Vec3 dp = o - p;
     double b = -2 * u.dot(dp);
@@ -101,6 +126,15 @@ public:
   tuple<Vec3, Vec3> getInfo(void *i) {
     Vec3 n = *(Vec3*)i;
     delete (Vec3*)i;
+    Vec3 c;
+    if (texture != nullptr) {
+      c = texture->getColor(
+          atan2(sqrt(n.x * n.x + n.z * n.z), n.y) / PI,
+          (atan2(-n.z, n.x) + PI) / (2 * PI)
+      );
+    } else {
+      c = this->c;
+    }
     return make_tuple(n, c);
   }
 };
@@ -169,10 +203,14 @@ void render() {
 }
 
 int main() {
-  objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1));
-  objs.push_back(new Sphere(Vec3(0, 0, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1));
+  Texture *tEarth = new Texture("earth.bmp");
+  objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
+  objs.push_back(new Sphere(Vec3(0, 0, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
   lights.push_back(Light(Vec3(0, 20, -30), Vec3(1, 1, 1)));
+
   render();
+
   for (Object *obj: objs) delete obj;
+  delete tEarth;
   return 0;
 }
