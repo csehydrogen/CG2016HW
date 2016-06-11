@@ -167,19 +167,18 @@ public:
 
 class Object {
 public:
-  Vec3 c; // color
-  double ka, kd, ks, kn; // phong illumination coefficients
-  double a, n; // transparency and index of refraction
+  Vec3 ka, kd, ks, kr, kt;
+  double kn, n;
   Texture *texture;
-  Object(Vec3 _c, double _ka, double _kd, double _ks, double _kn, double _a, double _n,
-      Texture *_texture): c(_c), ka(_ka), kd(_kd), ks(_ks), kn(_kn), a(_a),
-      n(_n), texture(_texture) {}
-
+  Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture) {}
   virtual tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     return make_tuple(DBL_MAX, nullptr, nullptr);
   }
   virtual tuple<Vec3, Vec3> getInfo(void *i) {
     return make_tuple(Vec3(), Vec3());
+  }
+  virtual Vec3 attenuation(Vec3 p, Vec3 u, double dist) {
+    return Vec3();
   }
 };
 
@@ -187,9 +186,19 @@ class Sphere: public Object {
   Vec3 o; // center
   double r; // radius
 public:
-  Sphere(Vec3 _o, double _r, Vec3 _c, double _ka, double _kd, double _ks, double _kn,
-      double _a, double _n, Texture *_texture = nullptr): o(_o), r(_r),
-      Object(_c, _ka, _kd, _ks, _kn, _a, _n, _texture) {}
+  Sphere(Vec3 _o, double _r, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture = nullptr): o(_o), r(_r), Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture) {}
+  Vec3 attenuation(Vec3 p, Vec3 u, double dist) {
+    Vec3 ret(1, 1, 1);
+    Vec3 dp = o - p;
+    double b = -2 * u.dot(dp);
+    double c = dp.sqrlen() - r * r;
+    double d2 = b * b - 4 * c;
+    if (d2 < 0) return ret;
+    double d = sqrt(d2);
+    if ((-b - d) / 2 > EPS && (-b - d) / 2 < dist) ret = ret * kt;
+    if ((-b + d) / 2 > EPS && (-b + d) / 2 < dist) ret = ret * kt;
+    return ret;
+  }
   tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     Vec3 dp = o - p;
     double b = -2 * u.dot(dp);
@@ -198,8 +207,8 @@ public:
     if (d2 < 0) return make_tuple(DBL_MAX, nullptr, nullptr);
     double d = sqrt(d2);
     double s;
-    if ((-b - d) / 2 < EPS) {
-      if ((-b + d) / 2 < EPS) return make_tuple(DBL_MAX, nullptr, nullptr);
+    if ((-b - d) / 2 <= EPS) {
+      if ((-b + d) / 2 <= EPS) return make_tuple(DBL_MAX, nullptr, nullptr);
       s = (-b + d) / 2;
     } else {
       s = (-b - d) / 2;
@@ -217,7 +226,7 @@ public:
           (atan2(-n.z, n.x) + PI) / (2 * PI)
       );
     } else {
-      c = this->c;
+      c = Vec3(1, 1, 1);
     }
     return make_tuple(n, c);
   }
@@ -226,13 +235,35 @@ public:
 class Polyhedron: public Object {
   vector<Triangle> ts;
 public:
-  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _c, double _ka, double _kd, double _ks, double _kn, double _a, double _n, Texture *_texture = nullptr): Object(_c, _ka, _kd, _ks, _kn, _a, _n, _texture) {
+  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture = nullptr): Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture) {
     for (Triangle &t: obj->ts) {
       ts.push_back(t);
     }
     for (Triangle &t: ts) {
       t.scaleAndAdd(scale, ofs);
     }
+  }
+  Vec3 attenuation(Vec3 p, Vec3 u, double dist) {
+    Vec3 ret(1, 1, 1);
+    double denom;
+    for (Triangle &triangle: ts) {
+      denom = triangle.pn.dot(u);
+      if (denom == 0) continue;
+      double r = -(triangle.pd + triangle.pn.dot(p)) / denom;
+      if (r <= EPS || r >= dist) continue;
+      Vec3 w = p + u * r - triangle.p[0];
+      Vec3 u = triangle.p[1] - triangle.p[0];
+      Vec3 v = triangle.p[2] - triangle.p[0];
+      double uv = u.dot(v), uu = u.sqrlen(), vv = v.sqrlen();
+      double wv = w.dot(v), wu = w.dot(u);
+      denom = uv * uv - uu * vv;
+      double s = (uv * wv - vv * wu) / denom;
+      double t = (uv * wu - uu * wv) / denom;
+      if (s < 0 || t < 0 || s + t > 1) continue;
+      ret = ret * kt;
+      if (ret.sqrlen() < 1.0 / 65536) break;
+    }
+    return ret;
   }
   tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     double mr = DBL_MAX; Triangle *mt; Vec3 mbc;
@@ -241,7 +272,7 @@ public:
       denom = triangle.pn.dot(u);
       if (denom == 0) continue;
       double r = -(triangle.pd + triangle.pn.dot(p)) / denom;
-      if (r < EPS) continue;
+      if (r <= EPS) continue;
       Vec3 w = p + u * r - triangle.p[0];
       Vec3 u = triangle.p[1] - triangle.p[0];
       Vec3 v = triangle.p[2] - triangle.p[0];
@@ -271,7 +302,7 @@ public:
       Vec3 tp = t->t[0] * bc.x + t->t[1] * bc.y + t->t[2] * bc.z;
       c = texture->getColor(tp.x, tp.y);
     } else {
-      c = this->c;
+      c = Vec3(1, 1, 1);
     }
     return make_tuple(n, c);
   }
@@ -280,7 +311,20 @@ public:
 vector<Object*> objs;
 vector<Light> lights;
 
-Vec3 trace(Vec3 p, Vec3 u, Light *light = nullptr) {
+Vec3 cast(Vec3 p, Vec3 u, Light *light) {
+  double d = light->vec2light(p).len();
+  Vec3 atten(1, 1, 1);
+  for (Object *obj: objs) {
+    atten = atten * obj->attenuation(p, u, d);
+    if (atten.len() < EPS) break;
+  }
+  return light->c * atten;
+}
+
+Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
+  if (depth > 9 || w.len() < 1.0 / 256) {
+    return Vec3(0, 0, 0);
+  }
   double ms = DBL_MAX; Object *mo; void *mi;
   for (Object *obj: objs) {
     double s; Object *o; void *i;
@@ -290,34 +334,73 @@ Vec3 trace(Vec3 p, Vec3 u, Light *light = nullptr) {
     }
   }
 
-  if (light == nullptr) {
-    if (ms == DBL_MAX) return Vec3(0, 0, 0);
-  } else {
-    if (ms > light->vec2light(p).len()) return light->c;
-  }
+  if (ms == DBL_MAX) return Vec3(0, 0, 0);
 
   Vec3 n, qc;
   tie(n, qc) = mo->getInfo(mi);
   Vec3 v = -u;
   Vec3 q(p + u * ms);
-  Vec3 slc(mo->ka, mo->ka, mo->ka);
+  Vec3 slc(mo->ka);
+
+  // shadow rays
   for (Light &light: lights) {
     Vec3 l = light.vec2light(q).normalize();
-    double a = 1;
-    if (n.dot(v) * n.dot(l) < 0) {
-      if (mo->a == 1) continue;
-      a -= mo->a;
+    if (n.dot(v) * n.dot(l) < 0) { // refraction
+      double ni = 1, nr = 1;
+      Vec3 nn;
+      if (n.dot(l) > 0) {
+        nr = mo->n;
+        nn = n;
+      } else {
+        ni = mo->n;
+        nn = -n;
+      }
+      double ci = nn.dot(l);
+      double cr2 = 1 - (ni / nr) * (ni / nr) * (1 - ci * ci);
+      if (cr2 < 0) continue;
+      double cr = sqrt(cr2);
+      Vec3 r = nn * (ni / nr * ci - cr) - l * (ni / nr);
+      Vec3 lc = cast(q, l, &light);
+      slc = slc + qc * lc * mo->kt * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
+    } else { // reflection
+      Vec3 r = n * (2 * l.dot(n)) - l;
+      Vec3 lc = cast(q, l, &light);
+      slc = slc + qc * lc * mo->kr * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
     }
-    Vec3 lc = trace(q, l, &light);
-    Vec3 r = n * (2 * l.dot(n)) - l;
-    slc = slc
-        + lc * (a * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn)));
   }
-  return slc * qc;
+
+  // reflection
+  do {
+    Vec3 l = n * (2 * v.dot(n)) - v;
+    Vec3 lc = trace(q, l, depth + 1, w * mo->kr);
+    slc = slc + lc * mo->kr;
+  } while (false);
+
+  // refraction
+  do {
+    double ni = 1, nr = 1;
+    Vec3 nn;
+    if (n.dot(v) > 0) {
+      nr = mo->n;
+      nn = n;
+    } else {
+      ni = mo->n;
+      nn = -n;
+    }
+    double ci = nn.dot(v);
+    double cr2 = 1 - (ni / nr) * (ni / nr) * (1 - ci * ci);
+    if (cr2 < 0) continue;
+    double cr = sqrt(cr2);
+    Vec3 l = nn * (ni / nr * ci - cr) - v * (ni / nr);
+    Vec3 lc = trace(q, l, depth + 1, w * mo->kt);
+    slc = slc + lc * mo->kt;
+  } while (false);
+
+  return slc;
 }
 
 void render() {
-  int h = 256, w = 256;
+  int h = 512, w = 512;
   double fovy = PI / 2, near = 1;
   double pph = near * tan(fovy / 2) * 2;
   double ppw = pph * w / h;
@@ -328,8 +411,14 @@ void render() {
 
   for (int i = 0; i < h; ++i) {
     for (int j = 0; j < w; ++j) {
+      if (i == 256 && j == 256) {
+        i = 256;
+      }
       Vec3 v(ppw * (-0.5 + (j + 0.5) / w), pph * (0.5 - (i + 0.5) / h), -near);
       Vec3 c = trace(v, v.normalize());
+      if (c.x > 0) {
+        c.x = c.x;
+      }
       img(j, i)->Red = (ebmpBYTE)(min(c.x, 1.0) * 255);
       img(j, i)->Green = (ebmpBYTE)(min(c.y, 1.0) * 255);
       img(j, i)->Blue = (ebmpBYTE)(min(c.z, 1.0) * 255);
@@ -342,12 +431,18 @@ void render() {
 int main() {
   Texture *tEarth = new Texture("earth.bmp");
   Obj *oCube = new Obj("cube_textured.obj", true);
+  Obj *oMirror = new Obj("mirror.obj", false);
 
   //objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
-  objs.push_back(new Sphere(Vec3(0, 0, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
-  objs.push_back(new Polyhedron(oCube, Vec3(0, -20, -30), 20, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
+  //objs.push_back(new Sphere(Vec3(0, -10, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
+  //objs.push_back(new Polyhedron(oCube, Vec3(0, -20, -30), 20, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
+  //objs.push_back(new Polyhedron(oMirror, Vec3(0, -10, -60), 100, Vec3(1, 1, 1), 0.0, 0.0, 1.0, 128, 1, 1));
+  objs.push_back(new Polyhedron(oCube, Vec3(0, -10, -50), 20, Vec3(0, 0, 0), Vec3(1, 1, 1), Vec3(0, 0, 0), 128, Vec3(1, 1, 1), Vec3(0, 0, 0), 1, tEarth));
+  objs.push_back(new Sphere(Vec3(0, -10, -30), 5, Vec3(0, 0, 0), Vec3(0, 0, 0), Vec3(0, 0, 0), 1, Vec3(0, 0, 0), Vec3(1, 1, 1), 1.33));
   lights.push_back(Light(Vec3(0, 0, 0), Vec3(1, 1, 1)));
-  lights.push_back(Light(Vec3(0, 20, -30), Vec3(1, 1, 1)));
+  //lights.push_back(Light(Vec3(0, 20, -30), Vec3(1, 1, 1)));
+  //lights.push_back(Light(Vec3(20, -30, -30), Vec3(1, 1, 1)));
+  //Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture) {}
 
   render();
 
