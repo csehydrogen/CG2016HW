@@ -1,3 +1,7 @@
+# Output
+# o filename height width
+o output.bmp 512 512
+
 # Texture
 # t filename
 t earth.bmp

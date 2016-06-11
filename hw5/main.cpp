@@ -12,6 +12,7 @@ using namespace std;
 
 double const PI = atan(1.0) * 4;
 double const EPS = 1e-9;
+int const BUFSZ = 1024;
 
 class Vec3 {
 public:
@@ -121,7 +122,7 @@ public:
   Obj(char const *fn, bool texture) {
     vector<Vec3> v, vt, vn;
     FILE *f = fopen(fn, "r");
-    char buf[1024];
+    char buf[BUFSZ];
     while (fgets(buf, sizeof(buf), f)) {
       if (buf[0] == 'v') {
         if (buf[1] == ' ') {
@@ -312,6 +313,8 @@ vector<Object*> objs;
 vector<Light*> lights;
 vector<Texture*> textures;
 vector<Obj*> models;
+char outputFileName[BUFSZ];
+int outputHeight, outputWidth;
 
 Vec3 cast(Vec3 p, Vec3 u, Light *light) {
   double d = light->vec2light(p).len();
@@ -404,7 +407,7 @@ Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
 }
 
 void render() {
-  int h = 512, w = 512;
+  int h = outputHeight, w = outputWidth;
   double fovy = PI / 2, near = 1;
   double pph = near * tan(fovy / 2) * 2;
   double ppw = pph * w / h;
@@ -429,15 +432,17 @@ void render() {
     }
   }
 
-  img.WriteToFile("output.bmp");
+  img.WriteToFile(outputFileName);
 }
 
 void parseInput() {
-  char buf[1024], fn[1024];
+  char buf[BUFSZ], fn[BUFSZ];
   while (gets(buf)) {
     char type;
     if (sscanf(buf, "%c", &type) != 1) continue;
-    if (type == 't') {
+    if (type == 'o') {
+      sscanf(buf, "%*c%s%d%d", outputFileName, &outputHeight, &outputWidth);
+    } else if (type == 't') {
       sscanf(buf, "%*c%s", fn);
       textures.push_back(new Texture(fn));
     } else if (type == 'm') {
