@@ -1,0 +1,27 @@
+# Texture
+# t filename
+t earth.bmp
+
+# Model
+# m filename isTextured
+# isTextured: 1 if it has vt, 0 otherwise
+m cube_textured.obj 1
+m mirror.obj 0
+
+# Polyhedron
+# p model translate.xyz scale ka.xyz kd.xyz ks.xyz kn kr.xyz kt.xyz n texture
+# model: 0-based index of model in order of appearance
+# ka, kd, ks, kn: ambient, diffuse, specular, shininess coefficient in phong reflection model
+# kr, kt: reflectance and transmittance
+# n: index of refraction
+# texture: 0-based index of texture in order of appearance, -1 if not textured
+p 0 0 -10 -50 20 0 0 0 1 1 1 0 0 0 128 1 1 1 0 0 0 1 0
+
+# Sphere
+# s center.xyz radius ka.xyz kd.xyz ks.xyz kn kr.xyz kt.xyz n texture
+# similar to Polyhedron
+s 0 -10 -30 5 0 0 0 0 0 0 0 0 0 1 0 0 0 1 1 1 1.33 -1
+
+# Light
+# l pos.xyz color.xyz
+l 0 0 0 1 1 1

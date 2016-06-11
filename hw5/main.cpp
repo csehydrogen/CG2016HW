@@ -309,7 +309,9 @@ public:
 };
 
 vector<Object*> objs;
-vector<Light> lights;
+vector<Light*> lights;
+vector<Texture*> textures;
+vector<Obj*> models;
 
 Vec3 cast(Vec3 p, Vec3 u, Light *light) {
   double d = light->vec2light(p).len();
@@ -343,8 +345,8 @@ Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
   Vec3 slc(mo->ka);
 
   // shadow rays
-  for (Light &light: lights) {
-    Vec3 l = light.vec2light(q).normalize();
+  for (Light *light: lights) {
+    Vec3 l = light->vec2light(q).normalize();
     if (n.dot(v) * n.dot(l) < 0) { // refraction
       double ni = 1, nr = 1;
       Vec3 nn;
@@ -360,11 +362,11 @@ Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
       if (cr2 < 0) continue;
       double cr = sqrt(cr2);
       Vec3 r = nn * (ni / nr * ci - cr) - l * (ni / nr);
-      Vec3 lc = cast(q, l, &light);
+      Vec3 lc = cast(q, l, light);
       slc = slc + qc * lc * mo->kt * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
     } else { // reflection
       Vec3 r = n * (2 * l.dot(n)) - l;
-      Vec3 lc = cast(q, l, &light);
+      Vec3 lc = cast(q, l, light);
       slc = slc + qc * lc * mo->kr * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
     }
   }
@@ -428,26 +430,48 @@ void render() {
   img.WriteToFile("output.bmp");
 }
 
+void parseInput() {
+  char buf[1024], fn[1024];
+  while (gets(buf)) {
+    char type;
+    if (sscanf(buf, "%c", &type) != 1) continue;
+    if (type == 't') {
+      sscanf(buf, "%*c%s", fn);
+      textures.push_back(new Texture(fn));
+    } else if (type == 'm') {
+      int isTextured;
+      sscanf(buf, "%*c%s%d", fn, &isTextured);
+      models.push_back(new Obj(fn, isTextured));
+    } else if (type == 'p') {
+      int mi, ti;
+      double tx, ty, tz, scale, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n;
+      sscanf(buf, "%*c%d%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d", &mi, &tx, &ty, &tz, &scale, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti);
+      Texture *t = ti != -1 ? textures[ti] : nullptr;
+      objs.push_back(new Polyhedron(models[mi], Vec3(tx, ty, tz), scale, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t));
+    } else if (type == 's') {
+      int ti;
+      double cx, cy, cz, r, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n;
+      sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d", &cx, &cy, &cz, &r, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti);
+      Texture *t = ti != -1 ? textures[ti] : nullptr;
+      objs.push_back(new Sphere(Vec3(cx, cy, cz), r, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t));
+    } else if (type == 'l') {
+      double px, py, pz, cx, cy, cz;
+      sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf", &px, &py, &pz, &cx, &cy, &cz);
+      lights.push_back(new Light(Vec3(px, py, pz), Vec3(cx, cy, cz)));
+    }
+  }
+}
+
+void clean() {
+  for (Texture *i: textures) delete i;
+  for (Obj *i: models) delete i;
+  for (Object *i: objs) delete i;
+  for (Light *i: lights) delete i;
+}
+
 int main() {
-  Texture *tEarth = new Texture("earth.bmp");
-  Obj *oCube = new Obj("cube_textured.obj", true);
-  Obj *oMirror = new Obj("mirror.obj", false);
-
-  //objs.push_back(new Sphere(Vec3(0, -20, -30), 13, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
-  //objs.push_back(new Sphere(Vec3(0, -10, -30), 5, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
-  //objs.push_back(new Polyhedron(oCube, Vec3(0, -20, -30), 20, Vec3(1, 1, 1), 0.0, 0.2, 0.8, 4, 1, 1, tEarth));
-  //objs.push_back(new Polyhedron(oMirror, Vec3(0, -10, -60), 100, Vec3(1, 1, 1), 0.0, 0.0, 1.0, 128, 1, 1));
-  objs.push_back(new Polyhedron(oCube, Vec3(0, -10, -50), 20, Vec3(0, 0, 0), Vec3(1, 1, 1), Vec3(0, 0, 0), 128, Vec3(1, 1, 1), Vec3(0, 0, 0), 1, tEarth));
-  objs.push_back(new Sphere(Vec3(0, -10, -30), 5, Vec3(0, 0, 0), Vec3(0, 0, 0), Vec3(0, 0, 0), 1, Vec3(0, 0, 0), Vec3(1, 1, 1), 1.33));
-  lights.push_back(Light(Vec3(0, 0, 0), Vec3(1, 1, 1)));
-  //lights.push_back(Light(Vec3(0, 20, -30), Vec3(1, 1, 1)));
-  //lights.push_back(Light(Vec3(20, -30, -30), Vec3(1, 1, 1)));
-  //Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture) {}
-
+  parseInput();
   render();
-
-  for (Object *obj: objs) delete obj;
-  delete tEarth;
-  delete oCube;
+  clean();
   return 0;
 }
