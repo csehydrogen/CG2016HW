@@ -342,12 +342,13 @@ Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
   tie(n, qc) = mo->getInfo(mi);
   Vec3 v = -u;
   Vec3 q(p + u * ms);
-  Vec3 slc(mo->ka);
+  Vec3 slc = qc * mo->ka;
 
   // shadow rays
   for (Light *light: lights) {
     Vec3 l = light->vec2light(q).normalize();
     if (n.dot(v) * n.dot(l) < 0) { // refraction
+      /*
       double ni = 1, nr = 1;
       Vec3 nn;
       if (n.dot(l) > 0) {
@@ -364,10 +365,11 @@ Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
       Vec3 r = nn * (ni / nr * ci - cr) - l * (ni / nr);
       Vec3 lc = cast(q, l, light);
       slc = slc + qc * lc * mo->kt * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
+      */
     } else { // reflection
       Vec3 r = n * (2 * l.dot(n)) - l;
       Vec3 lc = cast(q, l, light);
-      slc = slc + qc * lc * mo->kr * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
+      slc = slc + qc * lc * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
     }
   }
 
