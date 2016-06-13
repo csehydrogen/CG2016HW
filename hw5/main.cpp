@@ -6,6 +6,7 @@
 #include <utility>
 #include <algorithm>
 #include <tuple>
+#include <random>
 #include "EasyBMP/EasyBMP.h"
 
 using namespace std;
@@ -49,6 +50,9 @@ public:
   }
   Vec3 operator*(double rhs) {
     return Vec3(x * rhs, y * rhs, z * rhs);
+  }
+  Vec3 operator/(double rhs) {
+    return Vec3(x / rhs, y / rhs, z / rhs);
   }
   Vec3 operator-() {
     return Vec3(-x, -y, -z);
@@ -315,6 +319,7 @@ vector<Texture*> textures;
 vector<Obj*> models;
 char outputFileName[BUFSZ];
 int outputHeight, outputWidth;
+int eAA = 1;
 
 Vec3 cast(Vec3 p, Vec3 u, Light *light) {
   double d = light->vec2light(p).len();
@@ -416,16 +421,25 @@ void render() {
   img.SetSize(w, h);
   img.SetBitDepth(24);
 
+  default_random_engine generator;
+  uniform_real_distribution<double> distribution(0.0, 1.0);
+
   for (int i = 0; i < h; ++i) {
     for (int j = 0; j < w; ++j) {
-      if (i == 256 && j == 256) {
-        i = 256;
+      Vec3 c;
+      for (int ii = 0; ii < eAA; ++ii) {
+        for (int jj = 0; jj < eAA; ++jj) {
+          double dx = distribution(generator);
+          double dy = distribution(generator);
+          Vec3 v(
+              ppw * (-0.5 + (j + (jj + dx) / eAA) / w),
+              pph * (0.5 - (i + (ii + dy) / eAA) / h),
+              -near
+          );
+          c = c + trace(v, v.normalize());
+        }
       }
-      Vec3 v(ppw * (-0.5 + (j + 0.5) / w), pph * (0.5 - (i + 0.5) / h), -near);
-      Vec3 c = trace(v, v.normalize());
-      if (c.x > 0) {
-        c.x = c.x;
-      }
+      c = c / (eAA * eAA);
       img(j, i)->Red = (ebmpBYTE)(min(c.x, 1.0) * 255);
       img(j, i)->Green = (ebmpBYTE)(min(c.y, 1.0) * 255);
       img(j, i)->Blue = (ebmpBYTE)(min(c.z, 1.0) * 255);
@@ -465,6 +479,12 @@ void parseInput() {
       double px, py, pz, cx, cy, cz;
       sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf", &px, &py, &pz, &cx, &cy, &cz);
       lights.push_back(new Light(Vec3(px, py, pz), Vec3(cx, cy, cz)));
+    } else if (type == 'e') {
+      int f, p;
+      sscanf(buf, "%*c%d%d", &f, &p);
+      if (f == 0) {
+        eAA = p;
+      }
     }
   }
 }

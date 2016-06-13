@@ -2,6 +2,11 @@
 # o filename height width
 o output.bmp 512 512
 
+# Extras
+# e feature parameter
+# anti-aliasing: e 0 rate
+e 0 2
+
 # Texture
 # t filename
 t earth.bmp
