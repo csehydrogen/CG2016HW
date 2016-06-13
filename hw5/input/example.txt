@@ -5,7 +5,10 @@ o output.bmp 512 512
 # Extras
 # e feature parameter
 # anti-aliasing: e 0 rate
+# soft shadow: e 1 radius, e 2 rate
 e 0 2
+e 1 1
+e 2 10
 
 # Texture
 # t filename

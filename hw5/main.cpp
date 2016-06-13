@@ -15,6 +15,12 @@ double const PI = atan(1.0) * 4;
 double const EPS = 1e-9;
 int const BUFSZ = 1024;
 
+default_random_engine generator;
+uniform_real_distribution<double> distribution(0.0, 1.0);
+
+int eAA = 1, eSSrate = 1;
+double eSSradius = 0;
+
 class Vec3 {
 public:
   double x, y, z;
@@ -93,7 +99,11 @@ public:
   Vec3 p, c;
   Light(Vec3 _p, Vec3 _c): p(_p), c(_c) {}
   Vec3 vec2light(Vec3 v) {
-    return p - v;
+    if (eSSradius == 0) return p - v;
+    double x = 2 * (distribution(generator) - 0.5);
+    double y = sqrt(max(0.0, 1 - x * x)) * 2 * (distribution(generator) - 0.5);
+    double z = sqrt(max(0.0, 1 - x * x - y * y)) * 2 * (distribution(generator) - 0.5);
+    return p + Vec3(x, y, z) * eSSradius - v;
   }
 };
 
@@ -319,7 +329,6 @@ vector<Texture*> textures;
 vector<Obj*> models;
 char outputFileName[BUFSZ];
 int outputHeight, outputWidth;
-int eAA = 1;
 
 Vec3 cast(Vec3 p, Vec3 u, Light *light) {
   double d = light->vec2light(p).len();
@@ -354,31 +363,35 @@ Vec3 trace(Vec3 p, Vec3 u, int depth = 0, Vec3 w = Vec3(1, 1, 1)) {
 
   // shadow rays
   for (Light *light: lights) {
-    Vec3 l = light->vec2light(q).normalize();
-    if (n.dot(v) * n.dot(l) < 0) { // refraction
-      /*
-      double ni = 1, nr = 1;
-      Vec3 nn;
-      if (n.dot(l) > 0) {
-        nr = mo->n;
-        nn = n;
-      } else {
-        ni = mo->n;
-        nn = -n;
+    Vec3 s;
+    for (int i = 0; i < eSSrate; ++i) {
+      Vec3 l = light->vec2light(q).normalize();
+      if (n.dot(v) * n.dot(l) < 0) { // refraction
+        /*
+        double ni = 1, nr = 1;
+        Vec3 nn;
+        if (n.dot(l) > 0) {
+          nr = mo->n;
+          nn = n;
+        } else {
+          ni = mo->n;
+          nn = -n;
+        }
+        double ci = nn.dot(l);
+        double cr2 = 1 - (ni / nr) * (ni / nr) * (1 - ci * ci);
+        if (cr2 < 0) continue;
+        double cr = sqrt(cr2);
+        Vec3 r = nn * (ni / nr * ci - cr) - l * (ni / nr);
+        Vec3 lc = cast(q, l, light);
+        s = s + qc * lc * mo->kt * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
+        */
+      } else { // reflection
+        Vec3 r = n * (2 * l.dot(n)) - l;
+        Vec3 lc = cast(q, l, light);
+        s = s + qc * lc * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
       }
-      double ci = nn.dot(l);
-      double cr2 = 1 - (ni / nr) * (ni / nr) * (1 - ci * ci);
-      if (cr2 < 0) continue;
-      double cr = sqrt(cr2);
-      Vec3 r = nn * (ni / nr * ci - cr) - l * (ni / nr);
-      Vec3 lc = cast(q, l, light);
-      slc = slc + qc * lc * mo->kt * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
-      */
-    } else { // reflection
-      Vec3 r = n * (2 * l.dot(n)) - l;
-      Vec3 lc = cast(q, l, light);
-      slc = slc + qc * lc * (mo->kd * abs(n.dot(l)) + mo->ks * pow(max(r.dot(v), 0.0), mo->kn));
     }
+    slc = slc + s / eSSrate;
   }
 
   // reflection
@@ -420,9 +433,6 @@ void render() {
   BMP img;
   img.SetSize(w, h);
   img.SetBitDepth(24);
-
-  default_random_engine generator;
-  uniform_real_distribution<double> distribution(0.0, 1.0);
 
   for (int i = 0; i < h; ++i) {
     for (int j = 0; j < w; ++j) {
@@ -484,6 +494,10 @@ void parseInput() {
       sscanf(buf, "%*c%d%d", &f, &p);
       if (f == 0) {
         eAA = p;
+      } else if (f == 1) {
+        eSSradius = p;
+      } else if (f == 2) {
+        eSSrate = p;
       }
     }
   }
