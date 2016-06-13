@@ -21,8 +21,7 @@ uniform_real_distribution<double> distribution(0.0, 1.0);
 int eAA = 1;
 double eSSradius = 0; int eSSrate = 1;
 double eDSPdepth, eDSPdispersion; int eDSPrate = 0;
-
-
+int eMBrate = 1;
 
 class Vec3 {
 public:
@@ -53,6 +52,9 @@ public:
   }
   Vec3 operator+(Vec3 const &rhs) {
     return Vec3(x + rhs.x, y + rhs.y, z + rhs.z);
+  }
+  void operator+=(Vec3 const &rhs) {
+    x += rhs.x; y += rhs.y; z += rhs.z;
   }
   Vec3 operator*(Vec3 const &rhs) {
     return Vec3(x * rhs.x, y * rhs.y, z * rhs.z);
@@ -185,10 +187,10 @@ public:
 
 class Object {
 public:
-  Vec3 ka, kd, ks, kr, kt;
+  Vec3 ka, kd, ks, kr, kt, m;
   double kn, n;
   Texture *texture;
-  Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture) {}
+  Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Vec3 _m): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture), m(_m) {}
   virtual tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     return make_tuple(DBL_MAX, nullptr, nullptr);
   }
@@ -198,13 +200,14 @@ public:
   virtual Vec3 attenuation(Vec3 p, Vec3 u, double dist) {
     return Vec3();
   }
+  virtual void move(double dt) {}
 };
 
 class Sphere: public Object {
   Vec3 o; // center
   double r; // radius
 public:
-  Sphere(Vec3 _o, double _r, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture = nullptr): o(_o), r(_r), Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture) {}
+  Sphere(Vec3 _o, double _r, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Vec3 _m): o(_o), r(_r), Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture, _m) {}
   Vec3 attenuation(Vec3 p, Vec3 u, double dist) {
     Vec3 ret(1, 1, 1);
     Vec3 dp = o - p;
@@ -248,12 +251,15 @@ public:
     }
     return make_tuple(n, c);
   }
+  void move(double dt) {
+    o = o + m * dt;
+  }
 };
 
 class Polyhedron: public Object {
   vector<Triangle> ts;
 public:
-  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture = nullptr): Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture) {
+  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Vec3 _m): Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture, _m) {
     for (Triangle &t: obj->ts) {
       ts.push_back(t);
     }
@@ -323,6 +329,12 @@ public:
       c = Vec3(1, 1, 1);
     }
     return make_tuple(n, c);
+  }
+  void move(double dt) {
+    Vec3 dm = m * dt;
+    for (Triangle &t: ts) {
+      t.scaleAndAdd(1, dm);
+    }
   }
 };
 
@@ -433,51 +445,64 @@ void render() {
   double pph = near * tan(fovy / 2) * 2;
   double ppw = pph * w / h;
 
-  BMP img;
-  img.SetSize(w, h);
-  img.SetBitDepth(24);
+  BMP bmp;
+  bmp.SetSize(w, h);
+  bmp.SetBitDepth(24);
 
-  for (int i = 0; i < h; ++i) {
-    for (int j = 0; j < w; ++j) {
-      Vec3 c;
-      for (int ii = 0; ii < eAA; ++ii) {
-        for (int jj = 0; jj < eAA; ++jj) {
-          double dx = distribution(generator);
-          double dy = distribution(generator);
-          Vec3 v(
-              ppw * (-0.5 + (j + (jj + dx) / eAA) / w),
-              pph * (0.5 - (i + (ii + dy) / eAA) / h),
-              -near
-          );
-          Vec3 dc;
-          if (eDSPrate) {
-            Vec3 u = v * (eDSPdepth / near);
-            for (int dspi = 0; dspi < eDSPrate; ++dspi) {
-              for (int dspj = 0; dspj < eDSPrate; ++dspj) {
-                Vec3 dv(
-                    (-0.5 + (dspj + distribution(generator)) / eDSPrate),
-                    (0.5 - (dspi + distribution(generator)) / eDSPrate),
-                    0
-                );
-                Vec3 vv = v + dv * (eDSPdepth * eDSPdispersion);
-                dc = dc + trace(vv, (u - vv).normalize());
+  vector<vector<Vec3>> img(h, vector<Vec3>(w));
+
+  for (int mbi = 0; mbi < eMBrate; ++mbi) {
+    for (int i = 0; i < h; ++i) {
+      for (int j = 0; j < w; ++j) {
+        Vec3 c;
+        for (int ii = 0; ii < eAA; ++ii) {
+          for (int jj = 0; jj < eAA; ++jj) {
+            double dx = distribution(generator);
+            double dy = distribution(generator);
+            Vec3 v(
+                ppw * (-0.5 + (j + (jj + dx) / eAA) / w),
+                pph * (0.5 - (i + (ii + dy) / eAA) / h),
+                -near
+            );
+            Vec3 dc;
+            if (eDSPrate) {
+              Vec3 u = v * (eDSPdepth / near);
+              for (int dspi = 0; dspi < eDSPrate; ++dspi) {
+                for (int dspj = 0; dspj < eDSPrate; ++dspj) {
+                  Vec3 dv(
+                      (-0.5 + (dspj + distribution(generator)) / eDSPrate),
+                      (0.5 - (dspi + distribution(generator)) / eDSPrate),
+                      0
+                  );
+                  Vec3 vv = v + dv * (eDSPdepth * eDSPdispersion);
+                  dc = dc + trace(vv, (u - vv).normalize());
+                }
               }
+              dc = dc / (eDSPrate * eDSPrate);
+            } else {
+              dc = trace(v, v.normalize());
             }
-            dc = dc / (eDSPrate * eDSPrate);
-          } else {
-            dc = trace(v, v.normalize());
+            c = c + dc;
           }
-          c = c + dc;
         }
+        img[i][j] += c / (eAA * eAA);
       }
-      c = c / (eAA * eAA);
-      img(j, i)->Red = (ebmpBYTE)(min(c.x, 1.0) * 255);
-      img(j, i)->Green = (ebmpBYTE)(min(c.y, 1.0) * 255);
-      img(j, i)->Blue = (ebmpBYTE)(min(c.z, 1.0) * 255);
+    }
+    for (Object *object: objs) {
+      object->move(1.0 / eMBrate);
     }
   }
 
-  img.WriteToFile(outputFileName);
+  for (int i = 0; i < h; ++i) {
+    for (int j = 0; j < w; ++j) {
+      Vec3 c = img[i][j] / eMBrate;
+      bmp(j, i)->Red = (ebmpBYTE)(min(c.x, 1.0) * 255);
+      bmp(j, i)->Green = (ebmpBYTE)(min(c.y, 1.0) * 255);
+      bmp(j, i)->Blue = (ebmpBYTE)(min(c.z, 1.0) * 255);
+    }
+  }
+
+  bmp.WriteToFile(outputFileName);
 }
 
 void parseInput() {
@@ -496,16 +521,16 @@ void parseInput() {
       models.push_back(new Obj(fn, isTextured));
     } else if (type == 'p') {
       int mi, ti;
-      double tx, ty, tz, scale, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n;
-      sscanf(buf, "%*c%d%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d", &mi, &tx, &ty, &tz, &scale, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti);
+      double tx, ty, tz, scale, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n, mbx = 0, mby = 0, mbz = 0;
+      sscanf(buf, "%*c%d%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d%lf%lf%lf", &mi, &tx, &ty, &tz, &scale, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti, &mbx, &mby, &mbz);
       Texture *t = ti != -1 ? textures[ti] : nullptr;
-      objs.push_back(new Polyhedron(models[mi], Vec3(tx, ty, tz), scale, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t));
+      objs.push_back(new Polyhedron(models[mi], Vec3(tx, ty, tz), scale, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t, Vec3(mbx, mby, mbz)));
     } else if (type == 's') {
       int ti;
-      double cx, cy, cz, r, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n;
-      sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d", &cx, &cy, &cz, &r, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti);
+      double cx, cy, cz, r, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n, mbx = 0, mby = 0, mbz = 0;
+      sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d%lf%lf%lf", &cx, &cy, &cz, &r, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti, &mbx, &mby, &mbz);
       Texture *t = ti != -1 ? textures[ti] : nullptr;
-      objs.push_back(new Sphere(Vec3(cx, cy, cz), r, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t));
+      objs.push_back(new Sphere(Vec3(cx, cy, cz), r, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t, Vec3(mbx, mby, mbz)));
     } else if (type == 'l') {
       double px, py, pz, cx, cy, cz;
       sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf", &px, &py, &pz, &cx, &cy, &cz);
@@ -523,6 +548,8 @@ void parseInput() {
         eDSPdepth = p0;
         eDSPdispersion = p1;
         eDSPrate = p2;
+      } else if (f == 3) {
+        eMBrate = p0;
       }
     }
   }

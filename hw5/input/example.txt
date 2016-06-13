@@ -7,9 +7,11 @@ o output.bmp 512 512
 # anti-aliasing: e 0 rate
 # soft shadow: e 1 radius rate
 # depth of field: e 2 depth dispersion rate
+# motion blur: e 3 rate
 e 0 2
 e 1 1 10
 e 2 40 0.01 2
+e 3 4
 
 # Texture
 # t filename
