@@ -18,8 +18,11 @@ int const BUFSZ = 1024;
 default_random_engine generator;
 uniform_real_distribution<double> distribution(0.0, 1.0);
 
-int eAA = 1, eSSrate = 1;
-double eSSradius = 0;
+int eAA = 1;
+double eSSradius = 0; int eSSrate = 1;
+double eDSPdepth, eDSPdispersion; int eDSPrate = 0;
+
+
 
 class Vec3 {
 public:
@@ -446,7 +449,25 @@ void render() {
               pph * (0.5 - (i + (ii + dy) / eAA) / h),
               -near
           );
-          c = c + trace(v, v.normalize());
+          Vec3 dc;
+          if (eDSPrate) {
+            Vec3 u = v * (eDSPdepth / near);
+            for (int dspi = 0; dspi < eDSPrate; ++dspi) {
+              for (int dspj = 0; dspj < eDSPrate; ++dspj) {
+                Vec3 dv(
+                    (-0.5 + (dspj + distribution(generator)) / eDSPrate),
+                    (0.5 - (dspi + distribution(generator)) / eDSPrate),
+                    0
+                );
+                Vec3 vv = v + dv * (eDSPdepth * eDSPdispersion);
+                dc = dc + trace(vv, (u - vv).normalize());
+              }
+            }
+            dc = dc / (eDSPrate * eDSPrate);
+          } else {
+            dc = trace(v, v.normalize());
+          }
+          c = c + dc;
         }
       }
       c = c / (eAA * eAA);
@@ -490,14 +511,18 @@ void parseInput() {
       sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf", &px, &py, &pz, &cx, &cy, &cz);
       lights.push_back(new Light(Vec3(px, py, pz), Vec3(cx, cy, cz)));
     } else if (type == 'e') {
-      int f, p;
-      sscanf(buf, "%*c%d%d", &f, &p);
+      int f;
+      double p0, p1, p2;
+      sscanf(buf, "%*c%d%lf%lf%lf", &f, &p0, &p1, &p2);
       if (f == 0) {
-        eAA = p;
+        eAA = p0;
       } else if (f == 1) {
-        eSSradius = p;
+        eSSradius = p0;
+        eSSrate = p1;
       } else if (f == 2) {
-        eSSrate = p;
+        eDSPdepth = p0;
+        eDSPdispersion = p1;
+        eDSPrate = p2;
       }
     }
   }
