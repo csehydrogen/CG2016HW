@@ -8,10 +8,12 @@ o output.bmp 512 512
 # soft shadow: e 1 radius rate
 # depth of field: e 2 depth dispersion rate
 # motion blur: e 3 rate
+# bump map: e 4 scale
 e 0 2
 e 1 1 10
 e 2 40 0.01 2
 e 3 4
+e 4 0.0001
 
 # Texture
 # t filename
@@ -24,16 +26,18 @@ m cube_textured.obj 1
 m mirror.obj 0
 
 # Polyhedron
-# p model translate.xyz scale ka.xyz kd.xyz ks.xyz kn kr.xyz kt.xyz n texture
+# p model translate.xyz scale ka.xyz kd.xyz ks.xyz kn kr.xyz kt.xyz n texture bump motion.xyz
 # model: 0-based index of model in order of appearance
 # ka, kd, ks, kn: ambient, diffuse, specular, shininess coefficient in phong reflection model
 # kr, kt: reflectance and transmittance
 # n: index of refraction
 # texture: 0-based index of texture in order of appearance, -1 if not textured
+# bump: same as texture
+# motion: motion vector for motion blur
 p 0 0 -10 -50 20 0 0 0 1 1 1 0 0 0 128 1 1 1 0 0 0 1 0
 
 # Sphere
-# s center.xyz radius ka.xyz kd.xyz ks.xyz kn kr.xyz kt.xyz n texture
+# s center.xyz radius ka.xyz kd.xyz ks.xyz kn kr.xyz kt.xyz n texture bump motion.xyz
 # similar to Polyhedron
 s 0 -10 -30 5 0 0 0 0 0 0 0 0 0 1 0 0 0 1 1 1 1.33 -1
 

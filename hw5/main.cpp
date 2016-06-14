@@ -22,6 +22,7 @@ int eAA = 1;
 double eSSradius = 0; int eSSrate = 1;
 double eDSPdepth, eDSPdispersion; int eDSPrate = 0;
 int eMBrate = 1;
+double eBMscale = 0;
 
 class Vec3 {
 public:
@@ -67,6 +68,9 @@ public:
   }
   Vec3 operator-() {
     return Vec3(-x, -y, -z);
+  }
+  void print() {
+    printf("(%f,%f,%f)\n", x, y, z);
   }
 };
 
@@ -115,16 +119,17 @@ public:
 class Texture {
 public:
   BMP img;
+  int h, w;
   Texture(char const *fn) {
     img.ReadFromFile(fn);
+    h = img.TellHeight();
+    w = img.TellWidth();
   }
   Vec3 getPixel(int i, int j) {
     RGBApixel *p = img(i, j);
     return Vec3(p->Red / 255.0, p->Green / 255.0, p->Blue / 255.0);
   }
   Vec3 getColor(double u, double v) {
-    int h = img.TellHeight();
-    int w = img.TellWidth();
     u = fmod(u, 1); u = u < 1 ? u : u - 1;
     v = fmod(v, 1); v = v < 1 ? v : v - 1;
     int x0 = h * u, x1 = (x0 + 1) % h;
@@ -132,6 +137,14 @@ public:
     double dx = h * u - x0, dy = w * v - y0;
     return (getPixel(y0, x0) * (1 - dx) + getPixel(y0, x1) * dx) * (1 - dy)
         + (getPixel(y1, x0) * (1 - dx) + getPixel(y1, x1) * dx) * dy;
+  }
+  Vec3 getGradient(double u, double v) {
+    u = fmod(u, 1); u = u < 1 ? u : u - 1;
+    v = fmod(v, 1); v = v < 1 ? v : v - 1;
+    int x0 = h * u, x1 = (x0 + 1) % h;
+    int y0 = w * v, y1 = (y0 + 1) % w;
+    double t = getPixel(y0, x0).len();
+    return Vec3((getPixel(y0, x1).len() - t) * h, (getPixel(y1, x0).len() - t) * w);
   }
 };
 
@@ -189,8 +202,8 @@ class Object {
 public:
   Vec3 ka, kd, ks, kr, kt, m;
   double kn, n;
-  Texture *texture;
-  Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Vec3 _m): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture), m(_m) {}
+  Texture *texture, *bump;
+  Object(Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Texture *_bump, Vec3 _m): ka(_ka), kd(_kd), ks(_ks), kn(_kn), kr(_kr), kt(_kt), n(_n), texture(_texture), bump(_bump), m(_m) {}
   virtual tuple<double, Object*, void*> intersect(Vec3 p, Vec3 u) {
     return make_tuple(DBL_MAX, nullptr, nullptr);
   }
@@ -207,7 +220,7 @@ class Sphere: public Object {
   Vec3 o; // center
   double r; // radius
 public:
-  Sphere(Vec3 _o, double _r, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Vec3 _m): o(_o), r(_r), Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture, _m) {}
+  Sphere(Vec3 _o, double _r, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Texture *_bump, Vec3 _m): o(_o), r(_r), Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture, _bump, _m) {}
   Vec3 attenuation(Vec3 p, Vec3 u, double dist) {
     Vec3 ret(1, 1, 1);
     Vec3 dp = o - p;
@@ -234,18 +247,29 @@ public:
     } else {
       s = (-b - d) / 2;
     }
-    return make_tuple(s, this, new Vec3(((p + u * s) - o).normalize()));
+    return make_tuple(s, this, new Vec3((p + u * s) - o));
   }
   // return normal and color
   tuple<Vec3, Vec3> getInfo(void *i) {
     Vec3 n = *(Vec3*)i;
     delete (Vec3*)i;
+
+    double ry = sqrt(n.x * n.x + n.z * n.z);
+    double phi = atan2(ry, n.y);
+    double theta = atan2(-n.z, n.x) + PI;
+    double u = phi / PI, v = theta / (2 * PI);
+    if (bump != nullptr) {
+      Vec3 pu = Vec3(cos(phi) * -cos(theta), -sin(phi), cos(phi) * sin(theta)) * (PI * r);
+      Vec3 pv = Vec3(sin(theta), 0, cos(theta)) * (2 * PI * ry);
+      Vec3 g = bump->getGradient(u, v) * eBMscale;
+      n = pu.cross(pv);
+      n += n.cross(pv) * g.x + pu.cross(n) * g.y;
+    }
+    n = n.normalize();
+
     Vec3 c;
     if (texture != nullptr) {
-      c = texture->getColor(
-          atan2(sqrt(n.x * n.x + n.z * n.z), n.y) / PI,
-          (atan2(-n.z, n.x) + PI) / (2 * PI)
-      );
+      c = texture->getColor(u, v);
     } else {
       c = Vec3(1, 1, 1);
     }
@@ -259,7 +283,7 @@ public:
 class Polyhedron: public Object {
   vector<Triangle> ts;
 public:
-  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Vec3 _m): Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture, _m) {
+  Polyhedron(Obj *obj, Vec3 ofs, double scale, Vec3 _ka, Vec3 _kd, Vec3 _ks, double _kn, Vec3 _kr, Vec3 _kt, double _n, Texture *_texture, Texture *_bump, Vec3 _m): Object(_ka, _kd, _ks, _kn, _kr, _kt, _n, _texture, _bump, _m) {
     for (Triangle &t: obj->ts) {
       ts.push_back(t);
     }
@@ -320,7 +344,23 @@ public:
     tie(t, bc) = *p;
     delete p;
 
-    Vec3 n = (t->n[0] * bc.x + t->n[1] * bc.y + t->n[2] * bc.z).normalize();
+    Vec3 n = t->n[0] * bc.x + t->n[1] * bc.y + t->n[2] * bc.z;
+    if (bump != nullptr) {
+      Vec3 dt1 = t->t[1] - t->t[0], dt2 = t->t[2] - t->t[0];
+      double det = dt1.x * dt2.y - dt1.y * dt2.x;
+      if (det != 0) {
+        double ku1 = dt2.y / det, ku2 = -dt1.y / det;
+        double kv1 = -dt2.x / det, kv2 = dt1.x / det;
+        Vec3 dp1 = t->p[1] - t->p[0], dp2 = t->p[2] - t->p[0];
+        Vec3 pu = dp1 * ku1 + dp2 * ku2, pv = dp1 * kv1 + dp2 * kv2;
+        Vec3 uv = t->t[0] * bc.x + t->t[1] * bc.y + t->t[2] * bc.z;
+        Vec3 g = bump->getGradient(uv.x, uv.y) * eBMscale;
+        n = pu.cross(pv);
+        n += n.cross(pv) * g.x + pu.cross(n) * g.y;
+      }
+    }
+    n = n.normalize();
+
     Vec3 c;
     if (texture != nullptr) {
       Vec3 tp = t->t[0] * bc.x + t->t[1] * bc.y + t->t[2] * bc.z;
@@ -520,17 +560,19 @@ void parseInput() {
       sscanf(buf, "%*c%s%d", fn, &isTextured);
       models.push_back(new Obj(fn, isTextured));
     } else if (type == 'p') {
-      int mi, ti;
+      int mi, ti = -1, bi = -1;
       double tx, ty, tz, scale, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n, mbx = 0, mby = 0, mbz = 0;
-      sscanf(buf, "%*c%d%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d%lf%lf%lf", &mi, &tx, &ty, &tz, &scale, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti, &mbx, &mby, &mbz);
+      sscanf(buf, "%*c%d%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d%d%lf%lf%lf", &mi, &tx, &ty, &tz, &scale, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti, &bi, &mbx, &mby, &mbz);
       Texture *t = ti != -1 ? textures[ti] : nullptr;
-      objs.push_back(new Polyhedron(models[mi], Vec3(tx, ty, tz), scale, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t, Vec3(mbx, mby, mbz)));
+      Texture *b = bi != -1 ? textures[bi] : nullptr;
+      objs.push_back(new Polyhedron(models[mi], Vec3(tx, ty, tz), scale, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t, b, Vec3(mbx, mby, mbz)));
     } else if (type == 's') {
-      int ti;
+      int ti = -1, bi = -1;
       double cx, cy, cz, r, kax, kay, kaz, kdx, kdy, kdz, ksx, ksy, ksz, kn, krx, kry, krz, ktx, kty, ktz, n, mbx = 0, mby = 0, mbz = 0;
-      sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d%lf%lf%lf", &cx, &cy, &cz, &r, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti, &mbx, &mby, &mbz);
+      sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%lf%d%d%lf%lf%lf", &cx, &cy, &cz, &r, &kax, &kay, &kaz, &kdx, &kdy, &kdz, &ksx, &ksy, &ksz, &kn, &krx, &kry, &krz, &ktx, &kty, &ktz, &n, &ti, &bi, &mbx, &mby, &mbz);
       Texture *t = ti != -1 ? textures[ti] : nullptr;
-      objs.push_back(new Sphere(Vec3(cx, cy, cz), r, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t, Vec3(mbx, mby, mbz)));
+      Texture *b = bi != -1 ? textures[bi] : nullptr;
+      objs.push_back(new Sphere(Vec3(cx, cy, cz), r, Vec3(kax, kay, kaz), Vec3(kdx, kdy, kdz), Vec3(ksx, ksy, ksz), kn, Vec3(krx, kry, krz), Vec3(ktx, kty, ktz), n, t, b, Vec3(mbx, mby, mbz)));
     } else if (type == 'l') {
       double px, py, pz, cx, cy, cz;
       sscanf(buf, "%*c%lf%lf%lf%lf%lf%lf", &px, &py, &pz, &cx, &cy, &cz);
@@ -550,6 +592,8 @@ void parseInput() {
         eDSPrate = p2;
       } else if (f == 3) {
         eMBrate = p0;
+      } else if (f == 4) {
+        eBMscale = p0;
       }
     }
   }
