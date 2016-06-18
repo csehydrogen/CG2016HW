@@ -1,0 +1,127 @@
+\documentclass{article}
+
+\usepackage{kotex}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\begin{document}
+
+\title{Programming Assignment \#5}
+\author{김희훈}
+\maketitle
+
+\section{요약}
+
+본 과제에서는 Turner Whitted의 recursive ray tracing을 구현하여 구와 다면체가 있는 장면을 렌더링 할 수 있도록 하였습니다.
+Phong illumination model을 사용했고, OBJ file import, BMP file export 기능도 구현하였습니다.
+추가로 Bump mapping, 렌더링 옵션과 장면을 묘사 가능한 입력 파일 포맷, Distributed ray tracing을 이용한 Anti-aliasing, Soft shadow, Depth of field, Motion blur도 구현하였습니다.
+
+\section{컴파일 및 실행}
+
+src 폴더에서 make로 컴파일합니다.
+실행은 make run \textless input/aa.txt와 같이 stdin으로 입력 파일을 넣으면 됩니다.
+
+\section{기본 구현}
+
+\subsection{Recursive ray tracing}
+
+trace 함수에서 수행됩니다.
+trace 함수는 픽셀별로 한번씩 호출되며 다음의 작업들을 수행합니다.
+
+\begin{enumerate}
+  \item
+    각 오브젝트의 intersect 함수를 호출하여 현재 ray가 어디서 충돌하는지 찾습니다.
+    그중 가장 먼저 충돌하는 점 q를 찾습니다.
+  \item
+    q에서 각 광원으로 shadow ray를 보내는 cast 함수를 호출합니다.
+    cast 함수는 광원과 q 사이에 불투명 또는 반투명 물체가 있는지 찾아 attenuation을 계산하여 최종적으로 q에 도달하는 빛의 세기 $I_l$를 구합니다.
+  \item
+    $I_l$들로 Phong shading을 수행하여 $I_p$를 구합니다.
+  \item
+    q에서 반사되는 방향으로 intersect 함수를 재귀호출하여 그 방향에서 q에 도달하는 빛 $I_r$을 구합니다.
+  \item
+    q에서 굴절되는 방향으로 intersect 함수를 재귀호출하여 그 방향에서 q에 도달하는 빛 $I_t$를 구합니다.
+  \item
+    q에서의 최종 색 $I$를 다음과 같은 식으로 구합니다.
+    \begin{equation*}
+      I=I_p+k_r I_r+k_t I_t
+    \end{equation*}
+    여기서 $k_r$은 reflectance, $k_t$는 transmittance입니다.
+\end{enumerate}
+
+\subsection{Importing geometry files}
+
+OBJ file format에서 v(vertex coordinate), vt(texture coordinate), vn(normal vector), f(face)만 파싱하는 간단한 파서를 구현하여 사용하였습니다.
+Obj class의 생성자에서 파싱을 수행합니다.
+
+\subsection{Exporting image files}
+
+결과 이미지는 EasyBMP라는 라이브러리를 사용하여 BMP format으로 저장합니다.
+
+\subsection{Texture mapping}
+
+ray와 물체가 점 q에서 충돌했을때, getInfo 함수가 q에서의 색깔과 법선 벡터를 돌려줍니다.
+이 함수를 수정하여 텍스쳐의 색깔을 돌려주도록 하면 텍스쳐 매핑이 구현됩니다.
+다면체의 경우, OBJ 파일의 텍스쳐 좌표를 내삽한 후, bilinear 내삽을 수행하였습니다.
+구의 경우, 충돌지점의 $\phi$와 $\theta$를 구한 후, 마찬가지로 내삽을 수행하였습니다.
+
+\section{추가 구현}
+
+\subsection{입력 파일}
+
+렌더링할 장면을 소스에 하드코딩하는 대신 입력해 줄 수 있도록 하였습니다.
+출력이미지의 크기, distributed ray tracing의 횟수, 텍스쳐 파일 위치, 모델 파일 위치, 오브젝트들의 위치와 색상, 광원의 위치와 색상 등의 다양한 옵션을 수정할 수 있습니다.
+input/example.txt에서 구체적인 포맷을 확인할 수 있습니다.
+
+\subsection{Bump mapping}
+
+텍스쳐 파일을 $d(u,v)$라 하고, mapping 되는 점의 좌표를 p, 법선을 n이라 하면, n을 다음과 같이 구한 n'로 바꾸어 주면 됩니다.
+\begin{equation*}
+  n'=n+scale(d_u(n \times p_v)+d_v(p_u \times n))
+\end{equation*}
+여기서 scale은 법선 벡터를 얼마나 수정할지에 대한 가중치입니다. 입력 파일에서 조절할 수 있으며 일반적으로 $10^{-4}$정도가 적당한 것으로 보입니다.
+
+\subsection{Distributed ray tracing}
+
+\paragraph{Anti-aliasing}
+
+렌더링 때 한 픽셀에서 trace를 한번 호출하는 대신, 여러번 호출하고 평균을 내면 oversampling의 효과를 내어 Anti-aliasing이 됩니다.
+더 좋은 효과를 위해 등간격으로 sampling하지 않고 jittering을 주었습니다.
+
+\paragraph{Soft shadow}
+
+Shadow ray를 보낼 때, 광원으로 하나만 보내는 대신, 광원을 반지름 r의 구로 생각하여 구 내부의 랜덤한 위치로 여러개의 shadow ray를 보낸 후 평균을 내었습니다.
+
+\paragraph{Depth of field}
+
+DOF를 고려하지 않을 렌더링에서는 projection plane 위의 점 $p$에서 $\hat{p}$ 방향으로 ray를 쏘게 됩니다.
+이때 거리 $d$ 지점에 초점을 맞추고 싶다면, $d \cdot p$ 지점에서 ray가 만나도록 여러개를 쏘고 평균을 내면 됩니다.
+
+\paragraph{Motion blur}
+
+오브젝트에 속도 벡터를 주고, 시간에 따라 오브젝트를 움직이면서 렌더링하여 나온 이미지들을 평균을 내주었습니다.
+
+\section{이미지 설명}
+
+\begin{itemize}
+  \item
+    \texttt{AA\_x.bmp}는 anti-aliasing 효과를 보여줍니다.
+    $x^2$는 픽셀별로 보낸 ray의 갯수입니다.
+  \item
+    \texttt{SS\_x.bmp}는 soft shadow 효과를 보여줍니다.
+    $x$는 광원의 반지름입니다.
+  \item
+    \texttt{DOF\_x.bmp}는 depth of field 효과를 보여줍니다.
+    $x$는 초점을 맞춘 거리입니다.
+  \item
+    \texttt{MB.bmp}는 motion blur 효과를 보여줍니다.
+  \item
+    \texttt{bump.bmp}는 bump mapping 효과를 보여줍니다.
+  \item
+    \texttt{main.bmp}는 기본 구현을 검증하기 위해 다양한 물체들을 배치한 장면입니다.
+    중앙 하단은 90도로 배치된 2개의 거울, 좌측 하단은 굴절율 $1.33$의 구, 우측 하단은 반사율 1의 구, 좌측 상단은 텍스쳐 맵핑된 구, 우측 상단은 텍스쳐와 범프 매핑된 다면체, 중앙은 보다 복잡한 다면체입니다.
+    벽에도 체스판 모양의 텍스쳐가 범프 매핑되어 있습니다.
+\end{itemize}
+
+\end{document}
