@@ -1,0 +1,9 @@
+o output.bmp 512 512
+t texture/earth.bmp
+m model/cube.obj 1
+m model/mirror.obj 0
+p 0 -1 -20 -50 10 0 0 0 1 1 1 0 0 0 128 0 0 0 0 0 0 1 0
+p 1 0 0 -80 50 0 0 0 0 0 0 0 0 0 128 1 1 1 0 0 0 1 -1
+l 0 0 0 1 1 1
+l 20 0 -50 1 1 1
+l -20 0 -50 1 1 1

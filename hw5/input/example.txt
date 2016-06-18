@@ -1,3 +1,5 @@
+# comments start with #
+
 # Output
 # o filename height width
 o output.bmp 512 512
